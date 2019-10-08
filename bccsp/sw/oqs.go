@@ -7,25 +7,12 @@ import (
 
 const oqsAlg = oqs.SigqTESLAI
 
-// TODO:
-// When to choose the algorithm to make it configurable? Presumably MSP should load it, but then how to pass it through
-// with the key/signature?
-// Way to cache the OQSSig and library, so we don't have to load them every time? But still must free/close each.
-
 func signOQS(k *oqs.SecretKey, digest []byte, opts bccsp.SignerOpts) ([]byte, error) {
-	lib, err := oqs.LoadDefaultLib()
-	if err != nil {
-		return nil, err
-	}
-	defer lib.Close()
-	sig, err := lib.GetSign(oqsAlg)
-	if err != nil {
-		return nil, err
-	}
-	defer sig.Close()
-	return sig.Sign(*k, digest)
+	return k.Sig.Sign(*k, digest)
 }
 
+// Should public keys also have a sig? If so, who is responsible for freeing/closing?
+// The one who runs KeyGen in the first place?
 func verifyOQS(k *oqs.PublicKey, signature, digest []byte, opts bccsp.SignerOpts) (bool, error) {
 	lib, err := oqs.LoadDefaultLib()
 	if err != nil {
