@@ -199,6 +199,7 @@ var operationFailed C.libResult = C.ERR_OPERATION_FAILED
 type SecretKey struct {
 	Sk []byte
 	PublicKey
+	Sig *OQSSig
 }
 
 type PublicKey struct {
@@ -237,6 +238,7 @@ func (s *OQSSig) KeyPair() (publicKey PublicKey, secretKey SecretKey, err error)
 	secretKey = SecretKey{
 		C.GoBytes(sk, secretKeyLen),
 		publicKey,
+		s,
 	}
 	return publicKey, secretKey, nil
 }
