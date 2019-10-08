@@ -16,6 +16,8 @@ limitations under the License.
 
 package bccsp
 
+import oqs "github.com/hyperledger/fabric/external_crypto"
+
 const (
 	// ECDSA Elliptic Curve Digital Signature Algorithm (key gen, import, sign, verify),
 	// at default security level.
@@ -177,9 +179,9 @@ type OQSKeyGenOpts struct {
 }
 
 // Algorithm returns the key generation algorithm identifier (to be used).
-func (opts OQSKeyGenOpts) Algorithm() string {
-	// Figure out what to do with this -- AlgNistKat? Or OQS algo? Both?
-	return ""
+func (opts *OQSKeyGenOpts) Algorithm() string {
+	// TODO: make this configurable?
+	return string(oqs.SigqTESLAI)
 }
 
 // Ephemeral returns true if the key to generate has to be ephemeral,

@@ -19,6 +19,7 @@ package sw
 import (
 	"crypto/elliptic"
 	"errors"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 	"reflect"
 	"testing"
 
@@ -74,7 +75,10 @@ func TestECDSAKeyGenerator(t *testing.T) {
 func TestOQSKeyGenerator(t *testing.T) {
 	t.Parallel()
 
-	kg := &oqsKeyGenerator{}
+	lib, err := oqs.LoadDefaultLib()
+	assert.NoError(t, err)
+	defer lib.Close()
+	kg := &oqsKeyGenerator{lib}
 	k, err := kg.KeyGen(nil)
 	assert.NoError(t, err)
 

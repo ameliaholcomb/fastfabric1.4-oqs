@@ -40,25 +40,30 @@ func (kg *ecdsaKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
 	return &ecdsaPrivateKey{privKey}, nil
 }
 
-type oqsKeyGenerator struct {}
+type oqsKeyGenerator struct {
+	lib *oqs.OQSLib
+}
 
 func (kg *oqsKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
-	lib, err := oqs.LoadDefaultLib()
+	if kg.lib == nil {
+		return nil, fmt.Errorf("Provided OQS library must not be nil")
+	}
+	if opts == nil {
+		opts = &bccsp.OQSKeyGenOpts{false}
+	}
+	// The sig will be saved in the key itself,
+	// so the key generator is responsible for closing it
+	sig, err := kg.lib.GetSign(oqs.SigType(opts.Algorithm()))
 	if err != nil {
 		return nil, err
 	}
-	defer lib.Close()
-	sig, err := lib.GetSign(oqsAlg)
-	if err != nil {
-		return nil, err
-	}
-	defer sig.Close()
-	// privateKey has a public key attribute
+	// The private key has a public key attribute
 	_, privateKey, err := sig.KeyPair()
 	if err != nil {
+		sig.Close()
 		return nil, err
 	}
-	return &oqsPrivateKey{privKey: &privateKey}, nil
+	return &oqsPrivateKey{privKey: &privateKey, alg: opts.Algorithm()}, nil
 }
 
 type aesKeyGenerator struct {
