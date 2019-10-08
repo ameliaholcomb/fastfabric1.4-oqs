@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const libPath = "/usr/local/lib/liboqs.dylib"
+const libPath = "liboqs.so"
 
 func TestRoundTrip(t *testing.T) {
 
