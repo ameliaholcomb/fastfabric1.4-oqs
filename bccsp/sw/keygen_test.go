@@ -71,6 +71,19 @@ func TestECDSAKeyGenerator(t *testing.T) {
 	assert.Equal(t, ecdsaK.privKey.Curve, elliptic.P256())
 }
 
+func TestOQSKeyGenerator(t *testing.T) {
+	t.Parallel()
+
+	kg := &oqsKeyGenerator{}
+	k, err := kg.KeyGen(nil)
+	assert.NoError(t, err)
+
+	oqsK, ok := k.(*oqsPrivateKey)
+	assert.True(t, ok)
+	assert.NotNil(t, oqsK.privKey)
+	assert.NotNil(t, oqsK.privKey.Pk)
+}
+
 func TestRSAKeyGenerator(t *testing.T) {
 	t.Parallel()
 

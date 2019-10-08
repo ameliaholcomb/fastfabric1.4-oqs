@@ -22,6 +22,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 
 	"github.com/hyperledger/fabric/bccsp"
 )
@@ -37,6 +38,27 @@ func (kg *ecdsaKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
 	}
 
 	return &ecdsaPrivateKey{privKey}, nil
+}
+
+type oqsKeyGenerator struct {}
+
+func (kg *oqsKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
+	lib, err := oqs.LoadDefaultLib()
+	if err != nil {
+		return nil, err
+	}
+	defer lib.Close()
+	sig, err := lib.GetSign(oqsAlg)
+	if err != nil {
+		return nil, err
+	}
+	defer sig.Close()
+	// privateKey has a public key attribute
+	_, privateKey, err := sig.KeyPair()
+	if err != nil {
+		return nil, err
+	}
+	return &oqsPrivateKey{privKey: &privateKey}, nil
 }
 
 type aesKeyGenerator struct {

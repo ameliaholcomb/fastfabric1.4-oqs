@@ -171,6 +171,23 @@ func (opts *ECDSAReRandKeyOpts) ExpansionValue() []byte {
 	return opts.Expansion
 }
 
+// OQSKeyGenOpts contains options for OQS key generation
+type OQSKeyGenOpts struct {
+	Temporary bool
+}
+
+// Algorithm returns the key generation algorithm identifier (to be used).
+func (opts OQSKeyGenOpts) Algorithm() string {
+	// Figure out what to do with this -- AlgNistKat? Or OQS algo? Both?
+	return ""
+}
+
+// Ephemeral returns true if the key to generate has to be ephemeral,
+// false otherwise.
+func (opts *OQSKeyGenOpts) Ephemeral() bool {
+	return opts.Temporary
+}
+
 // AESKeyGenOpts contains options for AES key generation at default security level
 type AESKeyGenOpts struct {
 	Temporary bool
