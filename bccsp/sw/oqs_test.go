@@ -1,7 +1,6 @@
 package sw
 
 import (
-	oqs "github.com/hyperledger/fabric/external_crypto"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -12,16 +11,11 @@ func TestOqsSigner_Sign(t *testing.T) {
 	publicKeyVerifier := &oqsPublicKeyKeyVerifier{}
 
 	// Generate keypair, message digest
-	// This should become bccsp.KeyGen
-	lib, err := oqs.LoadDefaultLib()
+	kg := &oqsKeyGenerator{}
+	priv, err := kg.KeyGen(nil)
 	assert.NoError(t, err)
-	defer lib.Close()
-	sig, err := lib.GetSign(oqsAlg)
+	pub, err := priv.PublicKey()
 	assert.NoError(t, err)
-	defer sig.Close()
-	publicKey, privateKey, err := sig.KeyPair()
-	pub := &oqsPublicKey{pubKey: &publicKey}
-	priv := &oqsPrivateKey{privKey: &privateKey}
 	digest := []byte("Hello world")
 
 	// Sign and verify signature
