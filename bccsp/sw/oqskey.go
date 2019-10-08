@@ -1,6 +1,7 @@
 package sw
 
 import (
+	"crypto/sha256"
 	"errors"
 	"github.com/hyperledger/fabric/bccsp"
 	oqs "github.com/hyperledger/fabric/external_crypto"
@@ -9,6 +10,7 @@ import (
 // oqsPrivateKey implements a bccsp.Key interface
 type oqsPrivateKey struct {
 	privKey *oqs.SecretKey
+	alg string
 }
 
 // Bytes converts this key to its byte representation,
@@ -19,7 +21,15 @@ func (k *oqsPrivateKey) Bytes() ([]byte, error) {
 
 // SKI returns the subject key identifier of this key.
 func (k *oqsPrivateKey) SKI() []byte {
-	return nil
+	if k.privKey == nil {
+		return nil
+	}
+	algBytes := []byte(k.alg)
+
+	// Hash public key with algorithm
+	hash := sha256.New()
+	hash.Write(append(k.privKey.Pk, algBytes...))
+	return hash.Sum(nil)
 }
 
 func (k *oqsPrivateKey) Symmetric() bool {
@@ -31,12 +41,13 @@ func (k *oqsPrivateKey) Private() bool {
 }
 
 func (k *oqsPrivateKey) PublicKey() (bccsp.Key, error) {
-	return &oqsPublicKey{&k.privKey.PublicKey}, nil
+	return &oqsPublicKey{&k.privKey.PublicKey, k.alg}, nil
 }
 
 // oqsPublicKey implements a bccsp.Key interface
 type oqsPublicKey struct {
 	pubKey *oqs.PublicKey
+	alg string
 }
 
 func (k *oqsPublicKey) Bytes() ([]byte, error) {
@@ -45,7 +56,15 @@ func (k *oqsPublicKey) Bytes() ([]byte, error) {
 
 // SKI returns the subject key identifier of this key.
 func (k *oqsPublicKey) SKI() []byte {
-	return nil
+	if k.pubKey == nil {
+		return nil
+	}
+	algBytes := []byte(k.alg)
+
+	// Hash public key with algorithm
+	hash := sha256.New()
+	hash.Write(append(k.pubKey.Pk, algBytes...))
+	return hash.Sum(nil)
 }
 
 func (k *oqsPublicKey) Symmetric() bool {
