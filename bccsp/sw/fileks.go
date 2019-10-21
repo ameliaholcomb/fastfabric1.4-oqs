@@ -213,6 +213,25 @@ func (ks *fileBasedKeyStore) StoreKey(k bccsp.Key) (err error) {
 			return fmt.Errorf("Failed storing AES key [%s]", err)
 		}
 
+	case *oqsPublicKey:
+		kk := k.(*oqsPublicKey)
+		if kk.pubKey == nil {
+			return fmt.Errorf("Failed storing empty OQS public key")
+		}
+		err = ks.storePublicKey(hex.EncodeToString(k.SKI()), kk.pubKey.Pk)
+		if err != nil {
+			return fmt.Errorf("Failed storing OQS public key [%s]", err)
+		}
+	case *oqsPrivateKey:
+		kk := k.(*oqsPrivateKey)
+		if kk.privKey == nil {
+			return fmt.Errorf("Failed storing empty OQS key")
+		}
+		err = ks.storeKey(hex.EncodeToString(k.SKI()), kk.privKey.Sk)
+		if err != nil {
+			return fmt.Errorf("Failed storing OQS key [%s]", err)
+		}
+
 	default:
 		return fmt.Errorf("Key type not reconigned [%s]", k)
 	}

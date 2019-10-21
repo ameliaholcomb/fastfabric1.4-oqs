@@ -1798,8 +1798,7 @@ func TestOQSSign(t *testing.T) {
 	provider, _, cleanup := currentTestConfig.Provider(t)
 	defer cleanup()
 
-	// TODO(Amelia): Set up StoreKey options and change to Temporary = false
-	k, err := provider.KeyGen(&bccsp.OQSKeyGenOpts{Temporary: true})
+	k, err := provider.KeyGen(&bccsp.OQSKeyGenOpts{Temporary: false})
 	if err != nil {
 		t.Fatalf("Failed generating OQS key [%s]", err)
 	}

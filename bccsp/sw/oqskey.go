@@ -51,6 +51,9 @@ type oqsPublicKey struct {
 }
 
 func (k *oqsPublicKey) Bytes() ([]byte, error) {
+	if k.pubKey == nil {
+		return nil, nil
+	}
 	return k.pubKey.Pk, nil
 }
 
