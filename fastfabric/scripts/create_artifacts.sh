@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+source base_parameters.sh
+
+if [[ ! -f crypto-config.yaml.bak ]]; then
+    cp crypto-config.yaml crypto-config.yaml.bak
+fi
+
+endorsers=""
+for i in ${ENDORSER_ADDRESS[@]}
+do
+    endorsers="- Hostname: ${i}\n${endorsers}"
+done
+
+(cat crypto-config.yaml.bak | sed "s/ORDERER_DOMAIN/$ORDERER_DOMAIN/g" | sed "s/ORDERER_ADDRESS/$ORDERER_ADDRESS/g"| sed "s/PEER_DOMAIN/$PEER_DOMAIN/g"| sed "s/FAST_PEER_ADDRESS/$FAST_PEER_ADDRESS/g"| sed "s/ENDORSERS/$endorsers/g") > crypto-config.yaml
+
+if [[ ! -f configtx.yaml.bak ]]; then
+    cp configtx.yaml configtx.yaml.bak
+fi
+
+(cat configtx.yaml.bak | sed "s/ORDERER_DOMAIN/$ORDERER_DOMAIN/g" | sed "s/ORDERER_ADDRESS/$ORDERER_ADDRESS/g"| sed "s/PEER_DOMAIN/$PEER_DOMAIN/g"| sed "s/FAST_PEER_ADDRESS/$FAST_PEER_ADDRESS/g") > configtx.yaml
+
+if [[ -d ./crypto-config ]]; then rm -r ./crypto-config; fi
+if [[ -d ./channel-artifacts ]]; then rm -r ./channel-artifacts; fi
+mkdir channel-artifacts
+./bin/cryptogen generate --config=crypto-config.yaml
+./bin/configtxgen -configPath ./ -outputBlock ./channel-artifacts/genesis.block -profile OneOrgOrdererGenesis -channelID ${CHANNEL}-system-channel
+./bin/configtxgen -configPath ./ -outputCreateChannelTx ./channel-artifacts/channel.tx -profile OneOrgChannel -channelID ${CHANNEL}
+./bin/configtxgen -configPath ./ -outputAnchorPeersUpdate ./channel-artifacts/anchor_peer.tx -profile OneOrgChannel -asOrg Org1MSP -channelID ${CHANNEL}

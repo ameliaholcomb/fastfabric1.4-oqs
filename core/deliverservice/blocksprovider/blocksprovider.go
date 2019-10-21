@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package blocksprovider
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/config"
+	"github.com/hyperledger/fabric/fastfabric/gossip"
 	"math"
 	"sync/atomic"
 	"time"
@@ -160,6 +162,10 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 			errorStatusCounter = 0
 			statusCounter = 0
 			blockNum := t.Block.Header.Number
+			if blockNum > 1 && config.IsEndorser {
+				continue
+			}
+			logger.Infof("received block [%d]", blockNum)
 
 			marshaledBlock, err := proto.Marshal(t.Block)
 			if err != nil {
@@ -174,8 +180,6 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 			numberOfPeers := len(b.gossip.PeersOfChannel(gossipcommon.ChainID(b.chainID)))
 			// Create payload with a block received
 			payload := createPayload(blockNum, marshaledBlock)
-			// Use payload to create gossip message
-			gossipMsg := createGossipMsg(b.chainID, payload)
 
 			logger.Debugf("[%s] Adding payload to local buffer, blockNum = [%d]", b.chainID, blockNum)
 			// Add payload to local state payloads buffer
@@ -183,10 +187,18 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 				logger.Warningf("Block [%d] received from ordering service wasn't added to payload buffer: %v", blockNum, err)
 			}
 
-			// Gossip messages with other nodes
-			logger.Debugf("[%s] Gossiping block [%d], peers number [%d]", b.chainID, blockNum, numberOfPeers)
-			if !b.isDone() {
-				b.gossip.Gossip(gossipMsg)
+			if !config.IsEndorser {
+				gossipChan := make(chan *gossip_proto.Payload, 1)
+				gossip.Queue[blockNum] = gossipChan
+				go func(c chan *gossip_proto.Payload) {
+					// Gossip messages with other nodes
+					logger.Debugf("[%s] Gossiping block [%d], peers number [%d]", b.chainID, blockNum, numberOfPeers)
+					// Use payload to create gossip message
+					gossipMsg := createGossipMsg(b.chainID, <-c)
+					if !b.isDone() {
+						b.gossip.Gossip(gossipMsg)
+					}
+				}(gossipChan)
 			}
 		default:
 			logger.Warningf("[%s] Received unknown: %v", b.chainID, t)

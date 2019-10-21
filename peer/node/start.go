@@ -70,6 +70,7 @@ import (
 	ccsupport "github.com/hyperledger/fabric/discovery/support/chaincode"
 	"github.com/hyperledger/fabric/discovery/support/config"
 	"github.com/hyperledger/fabric/discovery/support/gossip"
+	ffconfig "github.com/hyperledger/fabric/fastfabric/config"
 	gossipcommon "github.com/hyperledger/fabric/gossip/common"
 	"github.com/hyperledger/fabric/gossip/service"
 	"github.com/hyperledger/fabric/msp"
@@ -98,12 +99,18 @@ const (
 )
 
 var chaincodeDevMode bool
+var benchmarkOutput string
+var cpuprofile string
 
 func startCmd() *cobra.Command {
 	// Set the flags on the node start command.
 	flags := nodeStartCmd.Flags()
 	flags.BoolVarP(&chaincodeDevMode, "peer-chaincodedev", "", false,
 		"Whether peer in chaincode development mode")
+	flags.BoolVarP(&ffconfig.IsStorage, "isStorage", "s", false, "Defines if this node is a decoupled storage node")
+	flags.BoolVarP(&ffconfig.IsEndorser, "isEndorser", "e", false, "Defines if this node is a decoupled endorser node")
+	flags.StringVarP(&benchmarkOutput, "output", "o", "benchmark.log", "Specifies the benchmark out put location.")
+	flags.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
 
 	return nodeStartCmd
 }
@@ -123,6 +130,10 @@ var nodeStartCmd = &cobra.Command{
 }
 
 func serve(args []string) error {
+	if ffconfig.IsEndorser {
+		logger.Info("starting as endorser")
+	}
+
 	// currently the peer only works with the standard MSP
 	// because in certain scenarios the MSP has to make sure
 	// that from a single credential you only have a single 'identity'.

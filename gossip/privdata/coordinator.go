@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/config"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -155,12 +156,14 @@ func (c *coordinator) StoreBlock(block *common.Block, privateDataSets util.PvtDa
 
 	logger.Debugf("[%s] Validating block [%d]", c.ChainID, block.Header.Number)
 
-	validationStart := time.Now()
-	err := c.Validator.Validate(block)
-	c.reportValidationDuration(time.Since(validationStart))
-	if err != nil {
-		logger.Errorf("Validation failed: %+v", err)
-		return err
+	if !config.IsEndorser || block.Header.Number <= 1 {
+		validationStart := time.Now()
+		err := c.Validator.Validate(block)
+		c.reportValidationDuration(time.Since(validationStart))
+		if err != nil {
+			logger.Errorf("Validation failed: %+v", err)
+			return err
+		}
 	}
 
 	blockAndPvtData := &ledger.BlockAndPvtData{
