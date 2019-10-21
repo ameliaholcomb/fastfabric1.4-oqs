@@ -5,26 +5,12 @@ import (
 	oqs "github.com/hyperledger/fabric/external_crypto"
 )
 
-const oqsAlg = oqs.SigqTESLAI
-
 func signOQS(k *oqs.SecretKey, digest []byte, opts bccsp.SignerOpts) ([]byte, error) {
-	return k.Sig.Sign(*k, digest)
+	return oqs.Sign(*k, digest)
 }
 
-// Should public keys also have a sig? If so, who is responsible for freeing/closing?
-// The one who runs KeyGen in the first place?
 func verifyOQS(k *oqs.PublicKey, signature, digest []byte, opts bccsp.SignerOpts) (bool, error) {
-	lib, err := oqs.LoadDefaultLib()
-	if err != nil {
-		return false, err
-	}
-	defer lib.Close()
-	sig, err := lib.GetSign(oqsAlg)
-	if err != nil {
-		return false, err
-	}
-	defer sig.Close()
-	return sig.Verify(*k, signature, digest)
+	return oqs.Verify(*k, signature, digest)
 }
 
 type oqsSigner struct{}

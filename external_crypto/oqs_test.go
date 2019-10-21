@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const libPath = "liboqs.so"
+var libPath = "liboqs.so"
 
 func TestRoundTrip(t *testing.T) {
 
@@ -38,19 +38,14 @@ func TestRoundTrip(t *testing.T) {
 
 	}
 
-	// Load original libOQS shared C library
-	lib, err := LoadLib(libPath)
-
-	require.NoError(t, err)
-	defer func() { require.NoError(t, lib.Close()) }()
-
+	InitLib()
 	// Make random number generation deterministic in order to test against
 	// the C library results
-	lib.SetRandomAlg(AlgNistKat)
+	SetRandomAlg(Lib, AlgNistKat)
 
 	// The message will repeat in different invocations if random number
 	// generation is deterministic 
-	message, err := lib.GetRandomBytes(100)
+	message, _ := GetRandomBytes(100)
 
 	fmt.Println("Message to sign:")
 	h12 := strings.ToUpper(hex.EncodeToString(message))
@@ -58,21 +53,24 @@ func TestRoundTrip(t *testing.T) {
 
 	for _, sigAlg := range sigs {
 		t.Run(string(sigAlg), func(t *testing.T) {
+			// re-initialize Sig with new algorithm
+			DestroySig()
+			InitSig(sigAlg)
 
-			testSIG, err := lib.GetSign(sigAlg)
+			var err error
 			if err == errAlgDisabledOrUnknown {
 				t.Skipf("Skipping disabled/unknown algorithm %q", sigAlg)
 			}
 			require.NoError(t, err)
-			defer func() { require.NoError(t, testSIG.Close()) }()
 
-			publicKey, secretKey, err := testSIG.KeyPair()
+			publicKey, secretKey, sigType, err := KeyPair()
+			assert.Equal(t, sigType, sigAlg)
 			require.NoError(t, err)
 			
-			signature, err := testSIG.Sign(secretKey, message)
+			signature, err := Sign(secretKey, message)
 			require.NoError(t, err)
 
-			result, err := testSIG.Verify(publicKey, signature, message)
+			result, err := Verify(publicKey, signature, message)
 			require.NoError(t, err)
 
 			assert.Equal(t, result, true)
@@ -89,75 +87,42 @@ func TestBadLibrary(t *testing.T) {
 
 
 func TestReEntrantLibrary(t *testing.T) {
-	s1, err := LoadLib(libPath)
+	l1, err := LoadLib(libPath)
 	require.NoError(t, err)
-	defer func() { require.NoError(t, s1.Close()) }()
+	defer func() { require.NoError(t, CloseLib(l1)) }()
 
-	s2, err := LoadLib(libPath)
+	l2, err := LoadLib(libPath)
 	require.NoError(t, err)
-	defer func() { require.NoError(t, s2.Close()) }()
+	defer func() { require.NoError(t, CloseLib(l2)) }()
 }
 
 
 func TestLibraryClosed(t *testing.T) {
-	s, err := LoadLib(libPath)
+	l, err := LoadLib(libPath)
 	require.NoError(t, err)
-	require.NoError(t, s.Close())
+	require.NoError(t, CloseLib(l))
 
 	const expectedMsg = "library closed"
 
 	t.Run("GetSIG", func(t *testing.T) {
-		_, err := s.GetSign(SigPicnicL1FS)
+		_, err := GetSign(l, SigPicnicL1FS)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), expectedMsg)
 	})
 
 	t.Run("Close", func(t *testing.T) {
-		err := s.Close()
+		err := CloseLib(l)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), expectedMsg)
 	})
 }
-
-
-func TestSIGClosed(t *testing.T) {
-	s, err := LoadLib(libPath)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, s.Close()) }()
-
-	testSIG, err := s.GetSign(SigqTESLAI)
-	require.NoError(t, err)
-
-	require.NoError(t, testSIG.Close())
-
-	t.Run("KeyPair", func(t *testing.T) {
-		_, _, err := testSIG.KeyPair()
-		assert.Equal(t, errAlreadyClosed, err)
-	})
-
-	t.Run("Sign", func(t *testing.T) {
-		_, err := testSIG.Sign(SecretKey{}, nil)
-		assert.Equal(t, errAlreadyClosed, err)
-	})
-
-	t.Run("Verify", func(t *testing.T) {
-		_, err := testSIG.Verify(PublicKey{}, nil, nil)
-		assert.Equal(t, errAlreadyClosed, err)
-	})
-
-	t.Run("Close", func(t *testing.T) {
-		err := testSIG.Close()
-		assert.Equal(t, errAlreadyClosed, err)
-	})
-}
-
 
 func TestInvalidSIGAlg(t *testing.T) {
-	s, err := LoadLib(libPath)
+	l, err := LoadLib(libPath)
 	require.NoError(t, err)
-	defer func() { require.NoError(t, s.Close()) }()
+	defer func() { require.NoError(t, CloseLib(l)) }()
 
-	_, err = s.GetSign(SigType("this will never be valid"))
+	_, err = GetSign(l, SigType("this will never be valid"))
 	assert.Equal(t, errAlgDisabledOrUnknown, err)
 }
 

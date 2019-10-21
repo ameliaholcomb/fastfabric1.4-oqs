@@ -138,7 +138,8 @@ package oqs
 import "C"
 import (
 "fmt"
-"unsafe"
+	"log"
+	"unsafe"
 
 "github.com/pkg/errors"
 )
@@ -183,12 +184,13 @@ const (
 	SigSphincs_haraka_128f_robust SigType = "SPHINCS+-Haraka-128f-robust"
 )
 
-const defaultLibPath = "/usr/local/lib/liboqs.dylib"
 
 type AlgType string
 
 const (
 	AlgNistKat AlgType = "NIST-KAT"
+	defaultLibPath string = "liboqs.so"
+	defaultSigType SigType = SigqTESLAI
 )
 
 var errAlreadyClosed = errors.New("already closed")
@@ -199,7 +201,6 @@ var operationFailed C.libResult = C.ERR_OPERATION_FAILED
 type SecretKey struct {
 	Sk []byte
 	PublicKey
-	Sig *OQSSig
 }
 
 type PublicKey struct {
@@ -215,43 +216,48 @@ type OQSAlg struct {
 	ctx *C.ctx
 }
 
+type OQSLib struct {
+	ctx *C.ctx
+}
 
-func (s *OQSSig) KeyPair() (publicKey PublicKey, secretKey SecretKey, err error) {
-	if s.sig == nil {
-		return PublicKey{}, SecretKey{}, errAlreadyClosed
+var Lib *OQSLib
+var Sig *OQSSig
+
+func KeyPair() (publicKey PublicKey, secretKey SecretKey, sigType SigType, err error) {
+	if Sig == nil {
+		InitSig()
 	}
 
-	pubKeyLen := C.int(s.sig.length_public_key)
+	pubKeyLen := C.int(Sig.sig.length_public_key)
 	pk := C.malloc(C.ulong(pubKeyLen))
 	defer C.free(unsafe.Pointer(pk))
 
-	secretKeyLen := C.int(s.sig.length_secret_key)
+	secretKeyLen := C.int(Sig.sig.length_secret_key)
 	sk := C.malloc(C.ulong(secretKeyLen))
 	defer C.free(unsafe.Pointer(sk))
 
-	res := C.KeyPair(s.sig, (*C.uchar)(pk), (*C.uchar)(sk))
+	res := C.KeyPair(Sig.sig, (*C.uchar)(pk), (*C.uchar)(sk))
 	if res != C.ERR_OK {
-		return PublicKey{}, SecretKey{}, libError(res, "key pair generation failed")
+		return PublicKey{}, SecretKey{}, "", libError(res, "key pair generation failed")
 	}
 
 	publicKey = PublicKey { Pk: C.GoBytes(pk, pubKeyLen) }
 	secretKey = SecretKey{
 		C.GoBytes(sk, secretKeyLen),
 		publicKey,
-		s,
 	}
-	return publicKey, secretKey, nil
+	sigType = SigType(C.GoString(Sig.sig.method_name))
+	return publicKey, secretKey, sigType, nil
 }
 
 
-func (s *OQSSig) Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
-	if s.sig == nil {
-		return nil, errAlreadyClosed
+func Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
+	if Sig == nil {
+		InitSig()
 	}
-
 	var signatureLen C.ulong
 
-	sig := C.malloc(C.ulong(s.sig.length_signature))
+	sig := C.malloc(C.ulong(Sig.sig.length_signature))
 	defer C.free(unsafe.Pointer(sig))
 
 	mes_len := C.size_t(len(message))
@@ -261,7 +267,7 @@ func (s *OQSSig) Sign(secretKey SecretKey, message []byte) (signature []byte, er
 	sk := C.CBytes(secretKey.Sk)
 	defer C.free(sk)
 
-	res := C.Sign(s.sig, (*C.uchar)(sig), &signatureLen, (*C.uchar)(msg), mes_len, (*C.uchar)(sk))
+	res := C.Sign(Sig.sig, (*C.uchar)(sig), &signatureLen, (*C.uchar)(msg), mes_len, (*C.uchar)(sk))
 	if res != C.ERR_OK {
 		return nil, libError(res, "signing failed")
 	}
@@ -270,11 +276,10 @@ func (s *OQSSig) Sign(secretKey SecretKey, message []byte) (signature []byte, er
 }
 
 
-func (s *OQSSig) Verify(publicKey PublicKey, signature []byte, message []byte) (assert bool, err error) {
-	if s.sig == nil {
-		return false, errAlreadyClosed
+func Verify(publicKey PublicKey, signature []byte, message []byte) (assert bool, err error) {
+	if Sig == nil {
+		InitSig()
 	}
-
 	mes_len := C.ulong(len(message))
 	msg := C.CBytes(message)
 	defer C.free(msg)
@@ -286,29 +291,13 @@ func (s *OQSSig) Verify(publicKey PublicKey, signature []byte, message []byte) (
 	pk := C.CBytes(publicKey.Pk)
 	defer C.free(pk)
 
-	res := C.Verify(s.sig, (*C.uchar)(msg), mes_len, (*C.uchar)(sgn), sign_len, (*C.uchar)(pk))
+	res := C.Verify(Sig.sig, (*C.uchar)(msg), mes_len, (*C.uchar)(sgn), sign_len, (*C.uchar)(pk))
 	if res != C.ERR_OK {
 		return false, libError(res, "verification failed")
 	}
 
 	return true, nil
 }
-
-
-func (s *OQSSig) Close() error {
-	if s.sig == nil {
-		return errAlreadyClosed
-	}
-
-	res := C.FreeSig(s.ctx, s.sig)
-	if res != C.ERR_OK {
-		return libError(res, "failed to free signature")
-	}
-
-	s.sig = nil
-	return nil
-}
-
 
 func libError(result C.libResult, msg string, a ...interface{}) error {
 
@@ -321,33 +310,59 @@ func libError(result C.libResult, msg string, a ...interface{}) error {
 }
 
 
-type Sig interface {
-	KeyPair() (publicKey PublicKey, secretKey SecretKey, err error)
-
-	Sign(k SecretKey, message []byte) (signature []byte, err error)
-
-	Verify(k PublicKey, signature []byte, publicKey []byte) (assert bool, err error)
-
-	Close() error
-}
-
-
-type OQSLib struct {
-	ctx *C.ctx
-}
-
-
-func (l *OQSLib) Close() error {
-	res := C.Close(l.ctx)
-	if res != C.ERR_OK {
-		return libError(res, "failed to close library")
+// InitSig may optionally specify a SigType.
+// If exactly one SigType is not supplied, Init will fall back to defaultSigType
+func InitSig(sigT ...SigType) {
+	if Sig != nil {
+		return
 	}
+	if Lib == nil {
+		InitLib()
+	}
+	cryptoAlg := defaultSigType
+	if len(sigT) == 1 {
+		cryptoAlg = sigT[0]
 
-	return nil
+	}
+	sig, err := GetSign(Lib, cryptoAlg)
+	if err != nil {
+		log.Fatal("Unable to load OQS crypto sig")
+	}
+	Sig = sig
 }
 
-func LoadDefaultLib() (*OQSLib, error) {
-	return LoadLib(defaultLibPath)
+func InitLib() {
+	if Lib != nil {
+		return
+	}
+	lib, err := LoadLib(defaultLibPath)
+	if err != nil {
+		log.Fatal("Unable to load OQS crypto lib")
+	}
+	Lib = lib
+}
+
+func DestroySig() (err error) {
+	if Sig == nil {
+		return nil
+	}
+	err = CloseSig(Sig)
+	if err == nil {
+		Sig = nil
+	}
+	return err
+}
+
+
+func DestroyLib() (err error) {
+	if Lib == nil {
+		return nil
+	}
+	err = CloseLib(Lib)
+	if err == nil {
+		Lib = nil
+	}
+	return err
 }
 
 func LoadLib(path string) (*OQSLib, error) {
@@ -363,21 +378,29 @@ func LoadLib(path string) (*OQSLib, error) {
 	return &OQSLib{ctx: ctx}, nil
 }
 
+func CloseLib(lib *OQSLib) (error) {
+	res := C.Close(lib.ctx)
+	if res != C.ERR_OK {
+		return libError(res, "failed to close library")
+	}
+	return nil
+}
 
-func (l *OQSLib) GetSign(SigType SigType) (*OQSSig, error) {
-	cStr := C.CString(string(SigType))
+
+func GetSign(lib *OQSLib, alg SigType) (*OQSSig, error) {
+	cStr := C.CString(string(alg))
 	defer C.free(unsafe.Pointer(cStr))
 
 	var sigPtr *C.OQS_SIG
 
-	res := C.GetSign(l.ctx, cStr, &sigPtr)
+	res := C.GetSign(lib.ctx, cStr, &sigPtr)
 	if res != C.ERR_OK {
 		return nil, libError(res, "failed to get Signature")
 	}
 
 	sig := &OQSSig{
 		sig: sigPtr,
-		ctx: l.ctx,
+		ctx: lib.ctx,
 	}
 	if sig.sig == nil {
 		return nil, errAlgDisabledOrUnknown
@@ -386,12 +409,24 @@ func (l *OQSLib) GetSign(SigType SigType) (*OQSSig, error) {
 	return sig, nil
 }
 
+func CloseSig(sig *OQSSig) (error) {
+	if sig == nil {
+		return errAlreadyClosed
+	}
+	res := C.FreeSig(sig.ctx, sig.sig)
+	if res != C.ERR_OK {
+		return libError(res, "failed to free signature")
+	}
 
-func (l *OQSLib) SetRandomAlg(strAlg AlgType) (int, error) {
+	sig.sig = nil
+	return nil
+}
+
+func SetRandomAlg(lib *OQSLib, strAlg AlgType) (int, error) {
 	cStr := C.CString(string(strAlg))
 	defer C.free(unsafe.Pointer(cStr))
 
-	res := C.SetRandomAlg(l.ctx, cStr)
+	res := C.SetRandomAlg(lib.ctx, cStr)
 
 	if res != C.ERR_OK {
 		return -1, libError(res, "failed to get Alg")
@@ -400,8 +435,7 @@ func (l *OQSLib) SetRandomAlg(strAlg AlgType) (int, error) {
 	return 1, nil
 }
 
-
-func (l *OQSLib) GetRandomBytes(nbytes int) (randombytes []byte, err error) {
+func GetRandomBytes(nbytes int) (randombytes []byte, err error) {
 	bytes := C.malloc(C.ulong(nbytes))
 	defer C.free(unsafe.Pointer(bytes))
 

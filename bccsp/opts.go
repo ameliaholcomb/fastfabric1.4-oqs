@@ -180,7 +180,6 @@ type OQSKeyGenOpts struct {
 
 // Algorithm returns the key generation algorithm identifier (to be used).
 func (opts *OQSKeyGenOpts) Algorithm() string {
-	// TODO: make this configurable?
 	return string(oqs.SigqTESLAI)
 }
 

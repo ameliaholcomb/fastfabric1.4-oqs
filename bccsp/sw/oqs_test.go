@@ -1,7 +1,6 @@
 package sw
 
 import (
-	oqs "github.com/hyperledger/fabric/external_crypto"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -12,10 +11,7 @@ func TestOqsSigner_Sign(t *testing.T) {
 	publicKeyVerifier := &oqsPublicKeyKeyVerifier{}
 
 	// Generate keypair, message digest
-	lib, err := oqs.LoadDefaultLib()
-	defer lib.Close()
-	assert.NoError(t, err)
-	kg := &oqsKeyGenerator{lib}
+	kg := &oqsKeyGenerator{}
 	priv, err := kg.KeyGen(nil)
 	assert.NoError(t, err)
 	pub, err := priv.PublicKey()
@@ -31,7 +27,6 @@ func TestOqsSigner_Sign(t *testing.T) {
 	verify, err = privateKeyVerifier.Verify(priv, signature, digest, nil)
 	assert.NoError(t, err)
 	assert.True(t, verify)
-
 }
 
 func TestOqsKeySigner_SignError(t *testing.T) {

@@ -1792,6 +1792,34 @@ func TestRSAKeyImportFromRSAPublicKey(t *testing.T) {
 	}
 }
 
+
+func TestOQSSign(t *testing.T) {
+	t.Parallel()
+	provider, _, cleanup := currentTestConfig.Provider(t)
+	defer cleanup()
+
+	// TODO(Amelia): Set up StoreKey options and change to Temporary = false
+	k, err := provider.KeyGen(&bccsp.OQSKeyGenOpts{Temporary: true})
+	if err != nil {
+		t.Fatalf("Failed generating OQS key [%s]", err)
+	}
+
+	msg := []byte("Hello World")
+
+	digest, err := provider.Hash(msg, &bccsp.SHAOpts{})
+	if err != nil {
+		t.Fatalf("Failed computing HASH [%s]", err)
+	}
+
+	signature, err := provider.Sign(k, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed generating OQS signature [%s]", err)
+	}
+	if len(signature) == 0 {
+		t.Fatal("Failed generating OQS key. Signature must be different from nil")
+	}
+}
+
 func TestKeyImportFromX509RSAPublicKey(t *testing.T) {
 	t.Parallel()
 	provider, _, cleanup := currentTestConfig.Provider(t)

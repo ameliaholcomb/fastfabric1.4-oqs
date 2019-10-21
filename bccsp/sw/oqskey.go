@@ -10,7 +10,7 @@ import (
 // oqsPrivateKey implements a bccsp.Key interface
 type oqsPrivateKey struct {
 	privKey *oqs.SecretKey
-	alg string
+	sigAlg oqs.SigType
 }
 
 // Bytes converts this key to its byte representation,
@@ -24,7 +24,7 @@ func (k *oqsPrivateKey) SKI() []byte {
 	if k.privKey == nil {
 		return nil
 	}
-	algBytes := []byte(k.alg)
+	algBytes := []byte(k.sigAlg)
 
 	// Hash public key with algorithm
 	hash := sha256.New()
@@ -41,13 +41,13 @@ func (k *oqsPrivateKey) Private() bool {
 }
 
 func (k *oqsPrivateKey) PublicKey() (bccsp.Key, error) {
-	return &oqsPublicKey{&k.privKey.PublicKey, k.alg}, nil
+	return &oqsPublicKey{&k.privKey.PublicKey, k.sigAlg}, nil
 }
 
 // oqsPublicKey implements a bccsp.Key interface
 type oqsPublicKey struct {
 	pubKey *oqs.PublicKey
-	alg string
+	sigAlg oqs.SigType
 }
 
 func (k *oqsPublicKey) Bytes() ([]byte, error) {
@@ -59,7 +59,7 @@ func (k *oqsPublicKey) SKI() []byte {
 	if k.pubKey == nil {
 		return nil
 	}
-	algBytes := []byte(k.alg)
+	algBytes := []byte(k.sigAlg)
 
 	// Hash public key with algorithm
 	hash := sha256.New()

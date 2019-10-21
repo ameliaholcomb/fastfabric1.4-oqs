@@ -23,7 +23,6 @@ import (
 	"crypto/rsa"
 	"fmt"
 	oqs "github.com/hyperledger/fabric/external_crypto"
-
 	"github.com/hyperledger/fabric/bccsp"
 )
 
@@ -40,30 +39,15 @@ func (kg *ecdsaKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
 	return &ecdsaPrivateKey{privKey}, nil
 }
 
-type oqsKeyGenerator struct {
-	lib *oqs.OQSLib
-}
+type oqsKeyGenerator struct {}
 
 func (kg *oqsKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
-	if kg.lib == nil {
-		return nil, fmt.Errorf("Provided OQS library must not be nil")
-	}
-	if opts == nil {
-		opts = &bccsp.OQSKeyGenOpts{false}
-	}
-	// The sig will be saved in the key itself,
-	// so the key generator is responsible for closing it
-	sig, err := kg.lib.GetSign(oqs.SigType(opts.Algorithm()))
-	if err != nil {
-		return nil, err
-	}
 	// The private key has a public key attribute
-	_, privateKey, err := sig.KeyPair()
+	_, privateKey, sigAlg, err := oqs.KeyPair()
 	if err != nil {
-		sig.Close()
 		return nil, err
 	}
-	return &oqsPrivateKey{privKey: &privateKey, alg: opts.Algorithm()}, nil
+	return &oqsPrivateKey{&privateKey, sigAlg}, nil
 }
 
 type aesKeyGenerator struct {
