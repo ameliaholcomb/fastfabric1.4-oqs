@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -154,6 +155,9 @@ func (ks *fileBasedKeyStore) GetKey(ski []byte) (bccsp.Key, error) {
 			return &ecdsaPublicKey{key.(*ecdsa.PublicKey)}, nil
 		case *rsa.PublicKey:
 			return &rsaPublicKey{key.(*rsa.PublicKey)}, nil
+		case *oqs.PublicKey:
+			// TODO(amelia): How to get the real sigAlg out of this??
+			return &oqsPublicKey{key.(*oqs.PublicKey), oqs.SigqTESLAI}, nil
 		default:
 			return nil, errors.New("Public key type not recognized")
 		}
@@ -215,19 +219,13 @@ func (ks *fileBasedKeyStore) StoreKey(k bccsp.Key) (err error) {
 
 	case *oqsPublicKey:
 		kk := k.(*oqsPublicKey)
-		if kk.pubKey == nil {
-			return fmt.Errorf("Failed storing empty OQS public key")
-		}
-		err = ks.storePublicKey(hex.EncodeToString(k.SKI()), kk.pubKey.Pk)
+		err = ks.storePublicKey(hex.EncodeToString(k.SKI()), kk.pubKey)
 		if err != nil {
 			return fmt.Errorf("Failed storing OQS public key [%s]", err)
 		}
 	case *oqsPrivateKey:
 		kk := k.(*oqsPrivateKey)
-		if kk.privKey == nil {
-			return fmt.Errorf("Failed storing empty OQS key")
-		}
-		err = ks.storeKey(hex.EncodeToString(k.SKI()), kk.privKey.Sk)
+		err = ks.storePrivateKey(hex.EncodeToString(k.SKI()), kk.privKey)
 		if err != nil {
 			return fmt.Errorf("Failed storing OQS key [%s]", err)
 		}
@@ -378,14 +376,14 @@ func (ks *fileBasedKeyStore) loadPublicKey(alias string) (interface{}, error) {
 		return nil, err
 	}
 
-	privateKey, err := utils.PEMtoPublicKey(raw, ks.pwd)
+	publicKey, err := utils.PEMtoPublicKey(raw, ks.pwd)
 	if err != nil {
-		logger.Errorf("Failed parsing private key [%s]: [%s].", alias, err.Error())
+		logger.Errorf("Failed parsing public key [%s]: [%s].", alias, err.Error())
 
 		return nil, err
 	}
 
-	return privateKey, nil
+	return publicKey, nil
 }
 
 func (ks *fileBasedKeyStore) loadKey(alias string) ([]byte, error) {

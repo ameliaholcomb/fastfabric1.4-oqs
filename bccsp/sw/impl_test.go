@@ -1792,6 +1792,75 @@ func TestRSAKeyImportFromRSAPublicKey(t *testing.T) {
 	}
 }
 
+func TestOQSKeyGenEphemeral(t *testing.T) {
+	t.Parallel()
+	provider, _, cleanup := currentTestConfig.Provider(t)
+	defer cleanup()
+
+	k, err := provider.KeyGen(&bccsp.OQSKeyGenOpts{Temporary: true})
+	if err != nil {
+		t.Fatalf("Failed generating OQS key [%s]", err)
+	}
+	if k == nil {
+		t.Fatal("Failed generating OQS key. Key must be different from nil")
+	}
+	if !k.Private() {
+		t.Fatal("Failed generating OQS key. Key should be private")
+	}
+	if k.Symmetric() {
+		t.Fatal("Failed generating OQS key. Key should be asymmetric")
+	}
+	ski := k.SKI()
+	if len(ski) == 0 {
+		t.Fatal("SKI not valid. Zero length.")
+	}
+	pk, err := k.PublicKey()
+	if err != nil {
+		t.Fatalf("Failed getting public key from private OQS key [%s]", err)
+	}
+	raw, err := pk.Bytes()
+	if err != nil {
+		t.Fatalf("Failed marshalling OQS public key [%s]", err)
+	}
+	if len(raw) == 0 {
+		t.Fatal("Failed marshalling OQS public key. Zero length")
+	}
+}
+
+func TestOQSKeyGenNonEphemeral(t *testing.T) {
+	t.Parallel()
+	provider, _, cleanup := currentTestConfig.Provider(t)
+	defer cleanup()
+
+	k, err := provider.KeyGen(&bccsp.OQSKeyGenOpts{Temporary: false})
+	if err != nil {
+		t.Fatalf("Failed generating OQS key [%s]", err)
+	}
+	if k == nil {
+		t.Fatal("Failed generating OQS key. Key must be different from nil")
+	}
+	if !k.Private() {
+		t.Fatal("Failed generating OQS key. Key should be private")
+	}
+	if k.Symmetric() {
+		t.Fatal("Failed generating OQS key. Key should be asymmetric")
+	}
+	ski := k.SKI()
+	if len(ski) == 0 {
+		t.Fatal("SKI not valid. Zero length.")
+	}
+	pk, err := k.PublicKey()
+	if err != nil {
+		t.Fatalf("Failed getting public key from private OQS key [%s]", err)
+	}
+	raw, err := pk.Bytes()
+	if err != nil {
+		t.Fatalf("Failed marshalling OQS public key [%s]", err)
+	}
+	if len(raw) == 0 {
+		t.Fatal("Failed marshalling OQS public key. Zero length")
+	}
+}
 
 func TestOQSSign(t *testing.T) {
 	t.Parallel()
@@ -1816,6 +1885,69 @@ func TestOQSSign(t *testing.T) {
 	}
 	if len(signature) == 0 {
 		t.Fatal("Failed generating OQS key. Signature must be different from nil")
+	}
+}
+
+func TestOQSVerify(t *testing.T) {
+	t.Parallel()
+	provider, ks, cleanup := currentTestConfig.Provider(t)
+	defer cleanup()
+
+	k, err := provider.KeyGen(&bccsp.OQSKeyGenOpts{Temporary: false})
+	if err != nil {
+		t.Fatalf("Failed generating OQS key [%s]", err)
+	}
+
+	msg := []byte("Hello World")
+
+	digest, err := provider.Hash(msg, &bccsp.SHAOpts{})
+	if err != nil {
+		t.Fatalf("Failed computing HASH [%s]", err)
+	}
+
+	signature, err := provider.Sign(k, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed generating OQS signature [%s]", err)
+	}
+
+	valid, err := provider.Verify(k, signature, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed verifying OQS signature [%s]", err)
+	}
+	if !valid {
+		t.Fatal("Failed verifying OQS signature. Signature not valid.")
+	}
+
+	pk, err := k.PublicKey()
+	if err != nil {
+		t.Fatalf("Failed getting corresponding public key [%s]", err)
+	}
+
+	valid, err = provider.Verify(pk, signature, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed verifying OQS signature [%s]", err)
+	}
+	if !valid {
+		t.Fatal("Failed verifying OQS signature. Signature not valid.")
+	}
+
+	// Store public key
+	err = ks.StoreKey(pk)
+	if err != nil {
+		t.Fatalf("Failed storing corresponding public key [%s]", err)
+	}
+
+	pk2, err := ks.GetKey(pk.SKI())
+	if err != nil {
+		t.Fatalf("Failed retrieving corresponding public key [%s]", err)
+	}
+
+	valid, err = provider.Verify(pk2, signature, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed verifying OQS signature [%s]", err)
+	}
+	if !valid {
+		t.Fatal("Failed verifying OQS signature. Signature not valid.")
 	}
 }
 

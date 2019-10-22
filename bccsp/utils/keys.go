@@ -26,6 +26,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 )
 
 // struct to hold info required for PKCS#8
@@ -142,6 +143,18 @@ func PrivateKeyToPEM(privateKey interface{}, pwd []byte) ([]byte, error) {
 				Bytes: raw,
 			},
 		), nil
+	case *oqs.SecretKey:
+		if k == nil {
+			return nil, errors.New("Invalid oqs private key. It must be different from nil.")
+		}
+
+		// TODO(amelia): make this real
+		return pem.EncodeToMemory(
+			&pem.Block{
+				Type:  "OQS PRIVATE KEY PLAINTEXT BYTES",
+				Bytes: k.Sk,
+			},
+		), nil
 	default:
 		return nil, errors.New("Invalid key type. It must be *ecdsa.PrivateKey or *rsa.PrivateKey")
 	}
@@ -232,6 +245,11 @@ func PEMtoPrivateKey(raw []byte, pwd []byte) (interface{}, error) {
 			return nil, err
 		}
 		return key, err
+	}
+	// TODO(amelia): make this real
+	if block.Type == "OQS PRIVATE KEY PLAINTEXT BYTES" {
+		// TODO(amelia): Need to encode the public key as well to make this a valid structure?
+		return &oqs.SecretKey{block.Bytes, oqs.PublicKey{}}, nil
 	}
 
 	cert, err := DERToPrivateKey(block.Bytes)
@@ -335,9 +353,19 @@ func PublicKeyToPEM(publicKey interface{}, pwd []byte) ([]byte, error) {
 				Bytes: PubASN1,
 			},
 		), nil
-
+	case *oqs.PublicKey:
+		if k == nil {
+			return nil, errors.New("Invalid oqs public key. It must be different from nil.")
+		}
+		// TODO(amelia): Make this real
+		return pem.EncodeToMemory(
+			&pem.Block{
+				Type: "OQS PUBLIC KEY PLAINTEXT BYTES",
+				Bytes: k.Pk,
+			},
+		), nil
 	default:
-		return nil, errors.New("Invalid key type. It must be *ecdsa.PublicKey or *rsa.PublicKey")
+		return nil, errors.New("Invalid key type. It must be *ecdsa.PublicKey, *rsa.PublicKey or *oqs.PublicKey")
 	}
 }
 
@@ -440,6 +468,10 @@ func PEMtoPublicKey(raw []byte, pwd []byte) (interface{}, error) {
 		return key, err
 	}
 
+	// TODO(amelia): make this real
+	if block.Type == "OQS PUBLIC KEY PLAINTEXT BYTES" {
+		return &oqs.PublicKey{block.Bytes}, nil
+	}
 	cert, err := DERToPublicKey(block.Bytes)
 	if err != nil {
 		return nil, err
@@ -457,3 +489,4 @@ func DERToPublicKey(raw []byte) (pub interface{}, err error) {
 
 	return key, err
 }
+
