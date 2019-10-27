@@ -9,5 +9,7 @@ PeerOrgs:
   EnableNodeOUs: true
   Specs:
     - Hostname: FAST_PEER_ADDRESS
+    ENDORSERS
+    STORAGE
   Users:
     Count: 1

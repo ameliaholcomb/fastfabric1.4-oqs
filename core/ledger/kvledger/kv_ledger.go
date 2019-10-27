@@ -309,7 +309,7 @@ func (l *kvLedger) CommitWithPvtData(pvtdataAndBlock *ledger.BlockAndPvtData) er
 	}
 	elapsedBlockProcessing := time.Since(startBlockProcessing)
 
-	if !config.IsEndorser && blockNo > 1 {
+	if !(config.IsEndorser || config.IsStorage) && blockNo > 1 {
 		logger.Infof("queuing block [%d] for gossip", blockNo)
 		marshaledBlock, err := proto.Marshal(block)
 		if err != nil {

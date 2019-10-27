@@ -8,10 +8,14 @@ package node
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/remote"
+	"github.com/hyperledger/fabric/fastfabric/stopwatch"
+	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"syscall"
 	"time"
 
@@ -108,7 +112,9 @@ func startCmd() *cobra.Command {
 	flags.BoolVarP(&chaincodeDevMode, "peer-chaincodedev", "", false,
 		"Whether peer in chaincode development mode")
 	flags.BoolVarP(&ffconfig.IsStorage, "isStorage", "s", false, "Defines if this node is a decoupled storage node")
+	flags.StringVar(&ffconfig.StorageAddress, "storageAddr", "", "The address of the decoupled persistent storage node")
 	flags.BoolVarP(&ffconfig.IsEndorser, "isEndorser", "e", false, "Defines if this node is a decoupled endorser node")
+	flags.BoolVarP(&ffconfig.IsBenchmark, "isBenchmark", "b", false, "Runs the peer in benchmarking mode. Times between block commits are logged to the file specified with the --output (-o) flag.")
 	flags.StringVarP(&benchmarkOutput, "output", "o", "benchmark.log", "Specifies the benchmark out put location.")
 	flags.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to file")
 
@@ -130,8 +136,39 @@ var nodeStartCmd = &cobra.Command{
 }
 
 func serve(args []string) error {
+	if ffconfig.IsBenchmark {
+		f, err := os.OpenFile(benchmarkOutput, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			panic(err)
+		}
+		stopwatch.SetOutput("commit_benchmark", f)
+		logger.Info("Running in benchmarking mode")
+	}
+
 	if ffconfig.IsEndorser {
 		logger.Info("starting as endorser")
+	}
+
+	if ffconfig.IsStorage {
+		logger.Info("starting as storage server")
+		remote.StartServer(ffconfig.StorageAddress)
+	}
+
+	if !ffconfig.IsStorage && ffconfig.StorageAddress != "" {
+		if err := remote.StartStoragePeerClient(ffconfig.StorageAddress); err != nil {
+			panic(err)
+		}
+	}
+
+	if cpuprofile != "" {
+		f, err := os.Create(cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			panic(err)
+		}
+		defer pprof.StopCPUProfile()
 	}
 
 	// currently the peer only works with the standard MSP

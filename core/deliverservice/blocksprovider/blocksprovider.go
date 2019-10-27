@@ -162,7 +162,7 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 			errorStatusCounter = 0
 			statusCounter = 0
 			blockNum := t.Block.Header.Number
-			if blockNum > 1 && config.IsEndorser {
+			if blockNum > 1 && (config.IsEndorser || config.IsStorage) {
 				continue
 			}
 			logger.Infof("received block [%d]", blockNum)
@@ -187,7 +187,7 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 				logger.Warningf("Block [%d] received from ordering service wasn't added to payload buffer: %v", blockNum, err)
 			}
 
-			if !config.IsEndorser {
+			if !(blockNum > 1 && (config.IsEndorser || config.IsStorage)) {
 				gossipChan := make(chan *gossip_proto.Payload, 1)
 				gossip.Queue[blockNum] = gossipChan
 				go func(c chan *gossip_proto.Payload) {

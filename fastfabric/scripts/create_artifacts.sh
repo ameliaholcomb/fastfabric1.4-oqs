@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 source base_parameters.sh
 
+if [[ ! -f core.yaml.bak ]]; then
+    cp core.yaml core.yaml.bak
+fi
+
+bootstrap="bootstrap: $(get_correct_peer_address ${FAST_PEER_ADDRESS}):7051"
+(cat core.yaml.bak | sed "s/bootstrap: 127.0.0.1:7051/$bootstrap/g") > core.yaml
+
 if [[ ! -f crypto-config.yaml.bak ]]; then
     cp crypto-config.yaml crypto-config.yaml.bak
 fi
@@ -11,7 +18,12 @@ do
     endorsers="- Hostname: ${i}\n${endorsers}"
 done
 
-(cat crypto-config.yaml.bak | sed "s/ORDERER_DOMAIN/$ORDERER_DOMAIN/g" | sed "s/ORDERER_ADDRESS/$ORDERER_ADDRESS/g"| sed "s/PEER_DOMAIN/$PEER_DOMAIN/g"| sed "s/FAST_PEER_ADDRESS/$FAST_PEER_ADDRESS/g"| sed "s/ENDORSERS/$endorsers/g") > crypto-config.yaml
+storage=""
+if [[ ! -z $STORAGE_ADDRESS ]]; then
+    storage="- Hostname: ${STORAGE_ADDRESS}\n${storage}"
+fi
+
+(cat crypto-config.yaml.bak | sed "s/ORDERER_DOMAIN/$ORDERER_DOMAIN/g" | sed "s/ORDERER_ADDRESS/$ORDERER_ADDRESS/g"| sed "s/PEER_DOMAIN/$PEER_DOMAIN/g"| sed "s/FAST_PEER_ADDRESS/$FAST_PEER_ADDRESS/g"| sed "s/ENDORSERS/$endorsers/g"| sed "s/STORAGE/$storage/g") > crypto-config.yaml
 
 if [[ ! -f configtx.yaml.bak ]]; then
     cp configtx.yaml configtx.yaml.bak
