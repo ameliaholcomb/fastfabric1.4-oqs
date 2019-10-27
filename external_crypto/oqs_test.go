@@ -41,7 +41,7 @@ func TestRoundTrip(t *testing.T) {
 	InitLib()
 	// Make random number generation deterministic in order to test against
 	// the C library results
-	SetRandomAlg(Lib, AlgNistKat)
+	SetRandomAlg(packageLib, AlgNistKat)
 
 	// The message will repeat in different invocations if random number
 	// generation is deterministic 

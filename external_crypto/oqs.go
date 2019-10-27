@@ -223,29 +223,29 @@ type OQSSigInfo struct {
 	SecKeyLen int
 }
 
-var Lib *OQSLib
-var Sig *OQSSig
+var packageLib *OQSLib
+var packageSig *OQSSig
 
 func KeyPair() (publicKey PublicKey, secretKey SecretKey, err error) {
-	if Sig == nil {
+	if packageSig == nil {
 		InitSig()
 	}
 
-	pubKeyLen := C.int(Sig.sig.length_public_key)
+	pubKeyLen := C.int(packageSig.sig.length_public_key)
 	pk := C.malloc(C.ulong(pubKeyLen))
 	defer C.free(unsafe.Pointer(pk))
 
-	secKeyLen := C.int(Sig.sig.length_secret_key)
+	secKeyLen := C.int(packageSig.sig.length_secret_key)
 	sk := C.malloc(C.ulong(secKeyLen))
 	defer C.free(unsafe.Pointer(sk))
 
-	res := C.KeyPair(Sig.sig, (*C.uchar)(pk), (*C.uchar)(sk))
+	res := C.KeyPair(packageSig.sig, (*C.uchar)(pk), (*C.uchar)(sk))
 	if res != C.ERR_OK {
 		return PublicKey{}, SecretKey{}, libError(res, "key pair generation failed")
 	}
 
 	s := OQSSigInfo{
-		Algorithm: SigType(C.GoString(Sig.sig.method_name)),
+		Algorithm: SigType(C.GoString(packageSig.sig.method_name)),
 		PubKeyLen: int(pubKeyLen),
 		SecKeyLen: int(secKeyLen),
 	}
@@ -259,12 +259,12 @@ func KeyPair() (publicKey PublicKey, secretKey SecretKey, err error) {
 
 
 func Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
-	if Sig == nil {
+	if packageSig == nil {
 		InitSig()
 	}
 	var signatureLen C.ulong
 
-	sig := C.malloc(C.ulong(Sig.sig.length_signature))
+	sig := C.malloc(C.ulong(packageSig.sig.length_signature))
 	defer C.free(unsafe.Pointer(sig))
 
 	mes_len := C.size_t(len(message))
@@ -274,7 +274,7 @@ func Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
 	sk := C.CBytes(secretKey.Sk)
 	defer C.free(sk)
 
-	res := C.Sign(Sig.sig, (*C.uchar)(sig), &signatureLen, (*C.uchar)(msg), mes_len, (*C.uchar)(sk))
+	res := C.Sign(packageSig.sig, (*C.uchar)(sig), &signatureLen, (*C.uchar)(msg), mes_len, (*C.uchar)(sk))
 	if res != C.ERR_OK {
 		return nil, libError(res, "signing failed")
 	}
@@ -284,7 +284,7 @@ func Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
 
 
 func Verify(publicKey PublicKey, signature []byte, message []byte) (assert bool, err error) {
-	if Sig == nil {
+	if packageSig == nil {
 		InitSig()
 	}
 	mes_len := C.ulong(len(message))
@@ -298,7 +298,7 @@ func Verify(publicKey PublicKey, signature []byte, message []byte) (assert bool,
 	pk := C.CBytes(publicKey.Pk)
 	defer C.free(pk)
 
-	res := C.Verify(Sig.sig, (*C.uchar)(msg), mes_len, (*C.uchar)(sgn), sign_len, (*C.uchar)(pk))
+	res := C.Verify(packageSig.sig, (*C.uchar)(msg), mes_len, (*C.uchar)(sgn), sign_len, (*C.uchar)(pk))
 	if res != C.ERR_OK {
 		return false, libError(res, "verification failed")
 	}
@@ -320,10 +320,10 @@ func libError(result C.libResult, msg string, a ...interface{}) error {
 // InitSig may optionally specify a SigType.
 // If exactly one SigType is not supplied, Init will fall back to defaultSigType
 func InitSig(sigT ...SigType) {
-	if Sig != nil {
+	if packageSig != nil {
 		return
 	}
-	if Lib == nil {
+	if packageLib == nil {
 		InitLib()
 	}
 	cryptoAlg := defaultSigType
@@ -331,43 +331,43 @@ func InitSig(sigT ...SigType) {
 		cryptoAlg = sigT[0]
 
 	}
-	sig, err := GetSign(Lib, cryptoAlg)
+	sig, err := GetSign(packageLib, cryptoAlg)
 	if err != nil {
 		log.Fatal("Unable to load OQS crypto sig")
 	}
-	Sig = sig
+	packageSig = sig
 }
 
 func InitLib() {
-	if Lib != nil {
+	if packageLib != nil {
 		return
 	}
 	lib, err := LoadLib(defaultLibPath)
 	if err != nil {
 		log.Fatal("Unable to load OQS crypto lib")
 	}
-	Lib = lib
+	packageLib = lib
 }
 
 func DestroySig() (err error) {
-	if Sig == nil {
+	if packageSig == nil {
 		return nil
 	}
-	err = CloseSig(Sig)
+	err = CloseSig(packageSig)
 	if err == nil {
-		Sig = nil
+		packageSig = nil
 	}
 	return err
 }
 
 
 func DestroyLib() (err error) {
-	if Lib == nil {
+	if packageLib == nil {
 		return nil
 	}
-	err = CloseLib(Lib)
+	err = CloseLib(packageLib)
 	if err == nil {
-		Lib = nil
+		packageLib = nil
 	}
 	return err
 }
