@@ -470,7 +470,12 @@ func PEMtoPublicKey(raw []byte, pwd []byte) (interface{}, error) {
 
 	// TODO(amelia): make this real
 	if block.Type == "OQS PUBLIC KEY PLAINTEXT BYTES" {
-		return &oqs.PublicKey{block.Bytes}, nil
+		s := oqs.OQSSigInfo{
+				oqs.SigType("abc"),
+				1,
+				2,
+			}
+		return &oqs.PublicKey{block.Bytes, s}, nil
 	}
 	cert, err := DERToPublicKey(block.Bytes)
 	if err != nil {

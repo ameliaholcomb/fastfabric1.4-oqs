@@ -156,8 +156,7 @@ func (ks *fileBasedKeyStore) GetKey(ski []byte) (bccsp.Key, error) {
 		case *rsa.PublicKey:
 			return &rsaPublicKey{key.(*rsa.PublicKey)}, nil
 		case *oqs.PublicKey:
-			// TODO(amelia): How to get the real sigAlg out of this??
-			return &oqsPublicKey{key.(*oqs.PublicKey), oqs.SigqTESLAI}, nil
+			return &oqsPublicKey{key.(*oqs.PublicKey)}, nil
 		default:
 			return nil, errors.New("Public key type not recognized")
 		}

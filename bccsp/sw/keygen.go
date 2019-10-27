@@ -43,11 +43,11 @@ type oqsKeyGenerator struct {}
 
 func (kg *oqsKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
 	// The private key has a public key attribute
-	_, privateKey, sigAlg, err := oqs.KeyPair()
+	_, privateKey, err := oqs.KeyPair()
 	if err != nil {
 		return nil, err
 	}
-	return &oqsPrivateKey{&privateKey, sigAlg}, nil
+	return &oqsPrivateKey{&privateKey}, nil
 }
 
 type aesKeyGenerator struct {

@@ -77,12 +77,12 @@ func TestInvalidStoreKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("Error should be different from nil in this case")
 	}
-	err = ks.StoreKey(&oqsPublicKey{nil, ""})
+	err = ks.StoreKey(&oqsPublicKey{nil})
 	if err == nil {
 		t.Fatal("Error should be different from nil in this case")
 	}
 
-	err = ks.StoreKey(&oqsPrivateKey{nil, ""})
+	err = ks.StoreKey(&oqsPrivateKey{nil})
 	if err == nil {
 		t.Fatal("Error should be different from nil in this case")
 	}

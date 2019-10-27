@@ -205,14 +205,11 @@ type SecretKey struct {
 
 type PublicKey struct {
 	Pk []byte
+	Sig OQSSigInfo
 }
 
 type OQSSig struct {
 	sig *C.OQS_SIG
-	ctx *C.ctx
-}
-type OQSAlg struct {
-	alg *C.OQS_STATUS
 	ctx *C.ctx
 }
 
@@ -220,10 +217,16 @@ type OQSLib struct {
 	ctx *C.ctx
 }
 
+type OQSSigInfo struct {
+	Algorithm SigType
+	PubKeyLen int
+	SecKeyLen int
+}
+
 var Lib *OQSLib
 var Sig *OQSSig
 
-func KeyPair() (publicKey PublicKey, secretKey SecretKey, sigType SigType, err error) {
+func KeyPair() (publicKey PublicKey, secretKey SecretKey, err error) {
 	if Sig == nil {
 		InitSig()
 	}
@@ -232,22 +235,26 @@ func KeyPair() (publicKey PublicKey, secretKey SecretKey, sigType SigType, err e
 	pk := C.malloc(C.ulong(pubKeyLen))
 	defer C.free(unsafe.Pointer(pk))
 
-	secretKeyLen := C.int(Sig.sig.length_secret_key)
-	sk := C.malloc(C.ulong(secretKeyLen))
+	secKeyLen := C.int(Sig.sig.length_secret_key)
+	sk := C.malloc(C.ulong(secKeyLen))
 	defer C.free(unsafe.Pointer(sk))
 
 	res := C.KeyPair(Sig.sig, (*C.uchar)(pk), (*C.uchar)(sk))
 	if res != C.ERR_OK {
-		return PublicKey{}, SecretKey{}, "", libError(res, "key pair generation failed")
+		return PublicKey{}, SecretKey{}, libError(res, "key pair generation failed")
 	}
 
-	publicKey = PublicKey { Pk: C.GoBytes(pk, pubKeyLen) }
+	s := OQSSigInfo{
+		Algorithm: SigType(C.GoString(Sig.sig.method_name)),
+		PubKeyLen: int(pubKeyLen),
+		SecKeyLen: int(secKeyLen),
+	}
+	publicKey = PublicKey { Pk: C.GoBytes(pk, pubKeyLen), Sig: s}
 	secretKey = SecretKey{
-		C.GoBytes(sk, secretKeyLen),
+		C.GoBytes(sk, secKeyLen),
 		publicKey,
 	}
-	sigType = SigType(C.GoString(Sig.sig.method_name))
-	return publicKey, secretKey, sigType, nil
+	return publicKey, secretKey, nil
 }
 
 
