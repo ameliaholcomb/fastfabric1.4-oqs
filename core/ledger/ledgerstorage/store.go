@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package ledgerstorage
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/config"
+	fffsblkstorage "github.com/hyperledger/fabric/fastfabric/fsblkstorage"
 	"sync"
 
 	"github.com/hyperledger/fabric/common/flogging"
@@ -47,11 +49,15 @@ func NewProvider() *Provider {
 		blkstorage.IndexableAttrBlockTxID,
 		blkstorage.IndexableAttrTxValidationCode,
 	}
-	indexConfig := &blkstorage.IndexConfig{AttrsToIndex: attrsToIndex}
-	blockStoreProvider := fsblkstorage.NewProvider(
-		fsblkstorage.NewConf(ledgerconfig.GetBlockStorePath(), ledgerconfig.GetMaxBlockfileSize()),
-		indexConfig)
-
+	var blockStoreProvider blkstorage.BlockStoreProvider
+	if !config.IsStorage {
+		blockStoreProvider = fffsblkstorage.NewProvider()
+	} else {
+		indexConfig := &blkstorage.IndexConfig{AttrsToIndex: attrsToIndex}
+		blockStoreProvider = fsblkstorage.NewProvider(
+			fsblkstorage.NewConf(ledgerconfig.GetBlockStorePath(), ledgerconfig.GetMaxBlockfileSize()),
+			indexConfig)
+	}
 	pvtStoreProvider := pvtdatastorage.NewProvider()
 	return &Provider{blockStoreProvider, pvtStoreProvider}
 }
@@ -65,6 +71,10 @@ func (p *Provider) Open(ledgerid string) (*Store, error) {
 	if blockStore, err = p.blkStoreProvider.OpenBlockStore(ledgerid); err != nil {
 		return nil, err
 	}
+	if config.IsStorage {
+		config.RegisterBlockStore(ledgerid, blockStore)
+	}
+
 	if pvtdataStore, err = p.pvtdataStoreProvider.OpenStore(ledgerid); err != nil {
 		return nil, err
 	}
