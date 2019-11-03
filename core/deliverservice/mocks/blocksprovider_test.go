@@ -84,7 +84,7 @@ func TestMockGossipServiceAdapter(t *testing.T) {
 		Content: &proto.GossipMessage_DataMsg{
 			DataMsg: &proto.DataMessage{
 				Payload: &proto.Payload{
-					SeqNum: uint64(100),
+					Data: &common.Block{Header: &common.BlockHeader{Number: 100}},
 				},
 			},
 		},

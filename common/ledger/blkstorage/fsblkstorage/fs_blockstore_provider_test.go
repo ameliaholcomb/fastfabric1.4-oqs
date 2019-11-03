@@ -18,6 +18,7 @@ package fsblkstorage
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"testing"
 
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -42,12 +43,12 @@ func TestMultipleBlockStores(t *testing.T) {
 
 	blocks1 := testutil.ConstructTestBlocks(t, 5)
 	for _, b := range blocks1 {
-		store1.AddBlock(b)
+		store1.AddBlock(b.Block)
 	}
 
 	blocks2 := testutil.ConstructTestBlocks(t, 10)
 	for _, b := range blocks2 {
-		store2.AddBlock(b)
+		store2.AddBlock(b.Block)
 	}
 	checkBlocks(t, blocks1, store1)
 	checkBlocks(t, blocks2, store2)
@@ -55,7 +56,7 @@ func TestMultipleBlockStores(t *testing.T) {
 	checkWithWrongInputs(t, store2, 10)
 }
 
-func checkBlocks(t *testing.T, expectedBlocks []*common.Block, store blkstorage.BlockStore) {
+func checkBlocks(t *testing.T, expectedBlocks []*cached.Block, store blkstorage.BlockStore) {
 	bcInfo, _ := store.GetBlockchainInfo()
 	assert.Equal(t, uint64(len(expectedBlocks)), bcInfo.Height)
 	assert.Equal(t, expectedBlocks[len(expectedBlocks)-1].GetHeader().Hash(), bcInfo.CurrentBlockHash)

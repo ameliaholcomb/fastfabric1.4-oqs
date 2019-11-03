@@ -8,6 +8,7 @@ package peer
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"net"
 	"runtime"
 	"sync"
@@ -385,12 +386,12 @@ func createChain(cid string, ledger ledger.PeerLedger, cb *common.Block, ccp ccp
 		*semaphore.Weighted
 	}{cs, validationWorkersSemaphore}
 	validator := txvalidator.NewTxValidator(cid, vcs, sccp, pm)
-	c := committer.NewLedgerCommitterReactive(ledger, func(block *common.Block) error {
-		chainID, err := utils.GetChainIDFromBlock(block)
+	c := committer.NewLedgerCommitterReactive(ledger, func(block *cached.Block) error {
+		chainID, err := utils.GetChainIDFromBlock(block.Block)
 		if err != nil {
 			return err
 		}
-		return SetCurrConfigBlock(block, chainID)
+		return SetCurrConfigBlock(block.Block, chainID)
 	})
 
 	ordererAddresses := bundle.ChannelConfig().OrdererAddresses()

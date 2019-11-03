@@ -241,11 +241,11 @@ func TestVerifyBlock(t *testing.T) {
 	assert.Error(t, msgCryptoService.VerifyBlock([]byte("C"), 42, blockRaw))
 
 	// Check invalid args
-	assert.Error(t, msgCryptoService.VerifyBlock([]byte("C"), 42, []byte{0, 1, 2, 3, 4}))
+	assert.Error(t, msgCryptoService.VerifyBlock([]byte("C"), 42, &common.Block{}))
 	assert.Error(t, msgCryptoService.VerifyBlock([]byte("C"), 42, nil))
 }
 
-func mockBlock(t *testing.T, channel string, seqNum uint64, localSigner crypto.LocalSigner, dataHash []byte) ([]byte, []byte) {
+func mockBlock(t *testing.T, channel string, seqNum uint64, localSigner crypto.LocalSigner, dataHash []byte) (*common.Block, []byte) {
 	block := common.NewBlock(seqNum, nil)
 
 	// Add a fake transaction to the block referring channel "C"
@@ -284,10 +284,7 @@ func mockBlock(t *testing.T, channel string, seqNum uint64, localSigner crypto.L
 		},
 	})
 
-	blockRaw, err := proto.Marshal(block)
-	assert.NoError(t, err, "Failed marshalling block")
-
-	return blockRaw, msg
+	return block, msg
 }
 
 func TestExpiration(t *testing.T) {

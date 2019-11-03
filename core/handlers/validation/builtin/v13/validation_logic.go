@@ -8,6 +8,7 @@ package v13
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"regexp"
 
 	commonerrors "github.com/hyperledger/fabric/common/errors"
@@ -71,7 +72,7 @@ type validationArtifacts struct {
 }
 
 func (vscc *Validator) extractValidationArtifacts(
-	block *common.Block,
+	block *cached.Block,
 	txPosition int,
 	actionPosition int,
 ) (*validationArtifacts, error) {
@@ -147,7 +148,7 @@ func (vscc *Validator) extractValidationArtifacts(
 // has been resolved. If working with a limited number of goroutines for parallel validation, ensure
 // that they are allocated to transactions in ascending order.
 func (vscc *Validator) Validate(
-	block *common.Block,
+	block *cached.Block,
 	namespace string,
 	txPosition int,
 	actionPosition int,

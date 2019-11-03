@@ -9,6 +9,7 @@ package txvalidator
 import (
 	"context"
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -59,14 +60,14 @@ type Support interface {
 // and return the bit array mask indicating invalid transactions which
 // didn't pass validation.
 type Validator interface {
-	Validate(block *common.Block) error
+	Validate(block *cached.Block) error
 }
 
 // private interface to decouple tx validator
 // and vscc execution, in order to increase
 // testability of TxValidator
 type vsccValidator interface {
-	VSCCValidateTx(seq int, payload *common.Payload, envBytes []byte, block *common.Block) (error, peer.TxValidationCode)
+	VSCCValidateTx(seq int, payload *common.Payload, envBytes []byte, block *cached.Block) (error, peer.TxValidationCode)
 }
 
 // implementation of Validator interface, keeps
@@ -81,7 +82,7 @@ type TxValidator struct {
 var logger = flogging.MustGetLogger("committer.txvalidator")
 
 type blockValidationRequest struct {
-	block *common.Block
+	block *cached.Block
 	d     []byte
 	tIdx  int
 }
@@ -130,7 +131,7 @@ func (v *TxValidator) chainExists(chain string) bool {
 //    state is when a config transaction is received, but they are
 //    guaranteed to be alone in the block. If/when this assumption
 //    is violated, this code must be changed.
-func (v *TxValidator) Validate(block *common.Block) error {
+func (v *TxValidator) Validate(block *cached.Block) error {
 	var err error
 	var errPos int
 
@@ -224,7 +225,7 @@ func (v *TxValidator) Validate(block *common.Block) error {
 	}
 
 	// Initialize metadata structure
-	utils.InitBlockMetadata(block)
+	utils.InitBlockMetadata(block.Block)
 
 	block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txsfltr
 
@@ -236,7 +237,7 @@ func (v *TxValidator) Validate(block *common.Block) error {
 
 // allValidated returns error if some of the validation flags have not been set
 // during validation
-func (v *TxValidator) allValidated(txsfltr ledgerUtil.TxValidationFlags, block *common.Block) error {
+func (v *TxValidator) allValidated(txsfltr ledgerUtil.TxValidationFlags, block *cached.Block) error {
 	for id, f := range txsfltr {
 		if peer.TxValidationCode(f) == peer.TxValidationCode_NOT_VALIDATED {
 			return errors.Errorf("transaction %d in block %d has skipped validation", id, block.Header.Number)

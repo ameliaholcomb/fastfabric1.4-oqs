@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package txvalidator_test
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"reflect"
 	"testing"
 
@@ -107,12 +108,12 @@ func TestSamplePlugin(t *testing.T) {
 		Namespace: "mycc",
 		VSCCName:  "vscc",
 		Policy:    acceptAllPolicyBytes,
-		Block: &common.Block{
+		Block: cached.WrapBlock(&common.Block{
 			Header: &common.BlockHeader{},
 			Data: &common.BlockData{
 				Data: [][]byte{txnData},
 			},
-		},
+		}),
 		Channel: "mychannel",
 	}
 	assert.NoError(t, v.ValidateWithPlugin(ctx))

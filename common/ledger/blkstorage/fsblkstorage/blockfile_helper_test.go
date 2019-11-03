@@ -38,7 +38,7 @@ func TestConstructCheckpointInfoFromBlockFiles(t *testing.T) {
 	// Add a few blocks and verify that cpinfo derived from filesystem should be same as from the blockfile manager
 	blockfileMgr.addBlock(gb)
 	for _, blk := range bg.NextTestBlocks(3) {
-		blockfileMgr.addBlock(blk)
+		blockfileMgr.addBlock(blk.Block)
 	}
 	checkCPInfoFromFile(t, blkStoreDir, blockfileMgr.cpInfo)
 
@@ -48,13 +48,13 @@ func TestConstructCheckpointInfoFromBlockFiles(t *testing.T) {
 
 	// Add a few blocks that would go to new file and verify that cpinfo derived from filesystem should be same as from the blockfile manager
 	for _, blk := range bg.NextTestBlocks(3) {
-		blockfileMgr.addBlock(blk)
+		blockfileMgr.addBlock(blk.Block)
 	}
 	checkCPInfoFromFile(t, blkStoreDir, blockfileMgr.cpInfo)
 
 	// Write a partial block (to simulate a crash) and verify that cpinfo derived from filesystem should be same as from the blockfile manager
 	lastTestBlk := bg.NextTestBlocks(1)[0]
-	blockBytes, _, err := serializeBlock(lastTestBlk)
+	blockBytes, _, err := serializeBlock(lastTestBlk.Block)
 	assert.NoError(t, err)
 	partialByte := append(proto.EncodeVarint(uint64(len(blockBytes))), blockBytes[len(blockBytes)/2:]...)
 	blockfileMgr.currentFileWriter.append(partialByte, true)
@@ -77,7 +77,7 @@ func TestConstructCheckpointInfoFromBlockFiles(t *testing.T) {
 	assert.Equal(t, uint64(6), lastBlkIndexed)
 
 	// Add the last block again after start and check cpinfo again
-	assert.NoError(t, blockfileMgr.addBlock(lastTestBlk))
+	assert.NoError(t, blockfileMgr.addBlock(lastTestBlk.Block))
 	checkCPInfoFromFile(t, blkStoreDir, blockfileMgr.cpInfo)
 }
 

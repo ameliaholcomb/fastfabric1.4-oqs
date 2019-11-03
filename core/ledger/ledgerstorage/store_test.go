@@ -135,7 +135,7 @@ func TestStoreWithExistingBlockchain(t *testing.T) {
 
 	// Add existingBlocks to the block storage directly without involving pvtdata store and close the block storage
 	for _, blk := range existingBlocks {
-		assert.NoError(t, blkStore.AddBlock(blk))
+		assert.NoError(t, blkStore.AddBlock(blk.Block))
 	}
 	blockStoreProvider.Close()
 
@@ -241,7 +241,7 @@ func TestCrashBeforePvtdataStoreCommit(t *testing.T) {
 	// Mimic a crash just short of calling the final commit on pvtdata store
 	// After starting the store again, the block and the pvtdata should be available
 	store.pvtdataStore.Prepare(blokNumAtCrash, pvtdataAtCrash, nil)
-	store.BlockStore.AddBlock(dataAtCrash.Block)
+	store.BlockStore.AddBlock(dataAtCrash.Block.Block)
 	store.Shutdown()
 	provider.Close()
 	provider = NewProvider()
@@ -307,7 +307,7 @@ func TestAddAfterBlkStoreError(t *testing.T) {
 	}
 	lastBlkAndPvtData := sampleData[9]
 	// Add the block directly to blockstore
-	store.BlockStore.AddBlock(lastBlkAndPvtData.Block)
+	store.BlockStore.AddBlock(lastBlkAndPvtData.Block.Block)
 	// Adding the same block should cause passing on the error caused by the block storgae
 	assert.Error(t, store.CommitWithPvtData(lastBlkAndPvtData))
 	// At the end, the pvt store status should not have changed

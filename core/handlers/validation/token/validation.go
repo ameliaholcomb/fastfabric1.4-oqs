@@ -8,7 +8,7 @@ package token
 
 import (
 	"github.com/hyperledger/fabric/core/handlers/validation/api"
-	"github.com/hyperledger/fabric/protos/common"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 )
 
 type ValidationFactory struct {
@@ -25,6 +25,6 @@ func (v *ValidationPlugin) Init(dependencies ...validation.Dependency) error {
 	return nil
 }
 
-func (v *ValidationPlugin) Validate(block *common.Block, namespace string, txPosition int, actionPosition int, contextData ...validation.ContextDatum) error {
+func (v *ValidationPlugin) Validate(block *cached.Block, namespace string, txPosition int, actionPosition int, contextData ...validation.ContextDatum) error {
 	return nil
 }

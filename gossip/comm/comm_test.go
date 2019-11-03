@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
+	common2 "github.com/hyperledger/fabric/protos/common"
 	"math/rand"
 	"net"
 	"strconv"
@@ -88,7 +89,7 @@ func (*naiveSecProvider) GetPKIidOfCert(peerIdentity api.PeerIdentityType) commo
 
 // VerifyBlock returns nil if the block is properly signed,
 // else returns error
-func (*naiveSecProvider) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock []byte) error {
+func (*naiveSecProvider) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock *common2.Block) error {
 	return nil
 }
 
@@ -606,7 +607,7 @@ func TestCloseConn(t *testing.T) {
 	gotErr := false
 	msg2Send := createGossipMsg()
 	msg2Send.GetDataMsg().Payload = &proto.Payload{
-		Data: make([]byte, 1024*1024),
+		Data: &common2.Block{},
 	}
 	msg2Send.NoopSign()
 	for i := 0; i < DefRecvBuffSize; i++ {

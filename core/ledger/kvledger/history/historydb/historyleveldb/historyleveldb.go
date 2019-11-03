@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
 	"github.com/hyperledger/fabric/core/ledger/ledgerconfig"
 	"github.com/hyperledger/fabric/core/ledger/util"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"github.com/hyperledger/fabric/protos/common"
 	putils "github.com/hyperledger/fabric/protos/utils"
 )
@@ -71,7 +72,7 @@ func (historyDB *historyDB) Close() {
 }
 
 // Commit implements method in HistoryDB interface
-func (historyDB *historyDB) Commit(block *common.Block) error {
+func (historyDB *historyDB) Commit(block *cached.Block) error {
 
 	blockNo := block.Header.Number
 	//Set the starting tranNo to 0

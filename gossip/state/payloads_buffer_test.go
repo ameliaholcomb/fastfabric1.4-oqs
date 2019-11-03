@@ -8,6 +8,7 @@ package state
 
 import (
 	"crypto/rand"
+	"github.com/hyperledger/fabric/protos/common"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -29,8 +30,7 @@ func randomPayloadWithSeqNum(seqNum uint64) (*proto.Payload, error) {
 		return nil, err
 	}
 	return &proto.Payload{
-		SeqNum: seqNum,
-		Data:   data,
+		Data: &common.Block{Header: &common.BlockHeader{Number: seqNum}},
 	}, nil
 }
 
@@ -95,7 +95,7 @@ func TestPayloadsBufferImpl_Ready(t *testing.T) {
 	select {
 	case <-fin:
 		payload := buffer.Pop()
-		assert.Equal(t, payload.SeqNum, uint64(1))
+		assert.Equal(t, payload.Data.Header.Number, uint64(1))
 	case <-time.After(500 * time.Millisecond):
 		t.Fail()
 	}

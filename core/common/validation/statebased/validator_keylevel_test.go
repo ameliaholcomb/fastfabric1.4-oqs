@@ -8,6 +8,7 @@ package statebased
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"testing"
 
 	"github.com/hyperledger/fabric/common/errors"
@@ -33,15 +34,15 @@ func (m *mockPolicyEvaluator) Evaluate(policyBytes []byte, signatureSet []*commo
 	return m.EvaluateRV
 }
 
-func buildBlockWithTxs(txs ...[]byte) *common.Block {
-	return &common.Block{
+func buildBlockWithTxs(txs ...[]byte) *cached.Block {
+	return cached.WrapBlock(&common.Block{
 		Header: &common.BlockHeader{
 			Number: 1,
 		},
 		Data: &common.BlockData{
 			Data: txs,
 		},
-	}
+	})
 }
 
 func buildTXWithRwset(rws []byte) []byte {

@@ -8,6 +8,7 @@ package txvalidator
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"sync"
 
 	"github.com/hyperledger/fabric/common/cauthdsl"
@@ -57,7 +58,7 @@ type Context struct {
 	VSCCName  string
 	Policy    []byte
 	Namespace string
-	Block     *common.Block
+	Block     *cached.Block
 }
 
 // String returns a string representation of this Context

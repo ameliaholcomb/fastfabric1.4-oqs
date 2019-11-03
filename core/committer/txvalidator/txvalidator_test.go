@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package txvalidator
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -275,14 +276,15 @@ func TestTxValidationFailure_InvalidTxid(t *testing.T) {
 	txsFilter := util.NewTxValidationFlagsSetValue(len(block.Data.Data), peer.TxValidationCode_VALID)
 	block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txsFilter
 
+	cachedBlock := cached.WrapBlock(block)
 	// Commit block to the ledger
 	ledger.CommitWithPvtData(&ledger2.BlockAndPvtData{
-		Block: block,
+		Block: cachedBlock,
 	})
 
 	// Validation should invalidate transaction,
 	// because it's already committed
-	tValidator.Validate(block)
+	tValidator.Validate(cachedBlock)
 
 	txsfltr := util.TxValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 	assert.True(t, txsfltr.IsInvalid(0))

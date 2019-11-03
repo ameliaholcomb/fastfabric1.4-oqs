@@ -8,7 +8,7 @@ package v13
 
 import (
 	commonerrors "github.com/hyperledger/fabric/common/errors"
-	"github.com/hyperledger/fabric/protos/common"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"github.com/hyperledger/fabric/protos/peer"
 )
 
@@ -25,7 +25,7 @@ import (
 type StateBasedValidator interface {
 	// PreValidate sets the internal data structures of the validator needed before validation
 	// of transaction `txNum` in the specified block can proceed
-	PreValidate(txNum uint64, block *common.Block)
+	PreValidate(txNum uint64, block *cached.Block)
 
 	// Validate determines whether the transaction on the specified channel at the specified height
 	// is valid according to its chaincode-level endorsement policy and any key-level validation

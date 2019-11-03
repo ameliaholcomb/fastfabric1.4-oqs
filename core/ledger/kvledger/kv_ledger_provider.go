@@ -9,6 +9,7 @@ package kvledger
 import (
 	"bytes"
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
@@ -100,7 +101,8 @@ func (provider *Provider) Initialize(initializer *ledger.Initializer) error {
 // created ledgers list (atomically). If a crash happens in between, the 'recoverUnderConstructionLedger'
 // function is invoked before declaring the provider to be usable
 func (provider *Provider) Create(genesisBlock *common.Block) (ledger.PeerLedger, error) {
-	ledgerID, err := utils.GetChainIDFromBlock(genesisBlock)
+	genBlock := cached.WrapBlock(genesisBlock)
+	ledgerID, err := utils.GetChainIDFromBlock(genBlock.Block)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +124,7 @@ func (provider *Provider) Create(genesisBlock *common.Block) (ledger.PeerLedger,
 		return nil, err
 	}
 	if err := lgr.CommitWithPvtData(&ledger.BlockAndPvtData{
-		Block: genesisBlock,
+		Block: genBlock,
 	}); err != nil {
 		lgr.Close()
 		return nil, err

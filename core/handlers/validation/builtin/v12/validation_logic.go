@@ -9,6 +9,7 @@ package v12
 import (
 	"bytes"
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"regexp"
 
 	"github.com/golang/protobuf/proto"
@@ -75,7 +76,7 @@ type Validator struct {
 // Validate validates the given envelope corresponding to a transaction with an endorsement
 // policy as given in its serialized form
 func (vscc *Validator) Validate(
-	block *common.Block,
+	block *cached.Block,
 	namespace string,
 	txPosition int,
 	actionPosition int,

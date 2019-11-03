@@ -8,6 +8,7 @@ package builtin
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"reflect"
 
 	commonerrors "github.com/hyperledger/fabric/common/errors"
@@ -19,7 +20,6 @@ import (
 	. "github.com/hyperledger/fabric/core/handlers/validation/api/state"
 	"github.com/hyperledger/fabric/core/handlers/validation/builtin/v12"
 	"github.com/hyperledger/fabric/core/handlers/validation/builtin/v13"
-	"github.com/hyperledger/fabric/protos/common"
 	"github.com/pkg/errors"
 )
 
@@ -40,10 +40,10 @@ type DefaultValidation struct {
 
 //go:generate mockery -dir . -name TransactionValidator -case underscore -output mocks/
 type TransactionValidator interface {
-	Validate(block *common.Block, namespace string, txPosition int, actionPosition int, policy []byte) commonerrors.TxValidationError
+	Validate(block *cached.Block, namespace string, txPosition int, actionPosition int, policy []byte) commonerrors.TxValidationError
 }
 
-func (v *DefaultValidation) Validate(block *common.Block, namespace string, txPosition int, actionPosition int, contextData ...validation.ContextDatum) error {
+func (v *DefaultValidation) Validate(block *cached.Block, namespace string, txPosition int, actionPosition int, contextData ...validation.ContextDatum) error {
 	if len(contextData) == 0 {
 		logger.Panicf("Expected to receive policy bytes in context data")
 	}

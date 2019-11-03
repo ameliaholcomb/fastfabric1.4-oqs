@@ -99,7 +99,7 @@ func GetBlockFromBlockBytes(blockBytes []byte) (*cb.Block, error) {
 	block := &cb.Block{}
 	err := proto.Unmarshal(blockBytes, block)
 	if err != nil {
-		return block, errors.Wrap(err, "error unmarshaling block")
+		return nil, errors.Wrap(err, "error unmarshaling block")
 	}
 	return block, nil
 }

@@ -9,6 +9,7 @@ package txvalidator_test
 import (
 	"errors"
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"os"
 	"strconv"
 	"testing"
@@ -358,7 +359,7 @@ func testInvokeBadRWSet(t *testing.T, l ledger.PeerLedger, v txvalidator.Validat
 	tx := getEnv(ccID, nil, []byte("barf"), t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 1}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_BAD_RWSET)
 }
@@ -389,7 +390,7 @@ func testInvokeNoPolicy(t *testing.T, l ledger.PeerLedger, v txvalidator.Validat
 	tx := getEnv(ccID, nil, createRWset(t, ccID), t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_INVALID_OTHER_REASON)
 }
@@ -420,7 +421,7 @@ func testInvokeOK(t *testing.T, l ledger.PeerLedger, v txvalidator.Validator) {
 	tx := getEnv(ccID, nil, createRWset(t, ccID), t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertValid(b, t)
 }
@@ -444,7 +445,7 @@ func TestInvokeNoRWSet(t *testing.T) {
 			Header: &common.BlockHeader{},
 		}
 
-		err := v.Validate(b)
+		err := v.Validate(cached.WrapBlock(b))
 		assert.NoError(t, err)
 		assertValid(b, t)
 	})
@@ -484,7 +485,7 @@ func testInvokeNoRWSet(t *testing.T, l ledger.PeerLedger, v txvalidator.Validato
 	tx := getEnv(ccID, nil, createRWset(t), t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_ENDORSEMENT_POLICY_FAILURE)
 }
@@ -724,7 +725,7 @@ func TestParallelValidation(t *testing.T) {
 	b := &common.Block{Data: &common.BlockData{Data: blockData}, Header: &common.BlockHeader{Number: uint64(txCnt)}}
 
 	// validate the block
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 
 	// Block metadata array position to store serialized bit array filter of invalid transactions
@@ -760,7 +761,7 @@ func TestChaincodeEvent(t *testing.T) {
 			tx := getEnv(ccID, utils.MarshalOrPanic(&peer.ChaincodeEvent{ChaincodeId: "wrong"}), createRWset(t), t)
 			b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-			err := v.Validate(b)
+			err := v.Validate(cached.WrapBlock(b))
 			assert.NoError(t, err)
 			assertValid(b, t)
 		})
@@ -777,7 +778,7 @@ func TestChaincodeEvent(t *testing.T) {
 			tx := getEnv(ccID, []byte("garbage"), createRWset(t), t)
 			b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-			err := v.Validate(b)
+			err := v.Validate(cached.WrapBlock(b))
 			assert.NoError(t, err)
 			assertValid(b, t)
 		})
@@ -794,7 +795,7 @@ func TestChaincodeEvent(t *testing.T) {
 			tx := getEnv(ccID, utils.MarshalOrPanic(&peer.ChaincodeEvent{ChaincodeId: ccID}), createRWset(t), t)
 			b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-			err := v.Validate(b)
+			err := v.Validate(cached.WrapBlock(b))
 			assert.NoError(t, err)
 			assertValid(b, t)
 		})
@@ -861,7 +862,7 @@ func testCCEventMismatchedName(t *testing.T, l ledger.PeerLedger, v txvalidator.
 	tx := getEnv(ccID, utils.MarshalOrPanic(&peer.ChaincodeEvent{ChaincodeId: "wrong"}), createRWset(t), t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err) // TODO, convert test so it can check the error text for INVALID_OTHER_REASON
 	assertInvalid(b, t, peer.TxValidationCode_INVALID_OTHER_REASON)
 }
@@ -874,7 +875,7 @@ func testCCEventBadBytes(t *testing.T, l ledger.PeerLedger, v txvalidator.Valida
 	tx := getEnv(ccID, []byte("garbage"), createRWset(t), t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err) // TODO, convert test so it can check the error text for INVALID_OTHER_REASON
 	assertInvalid(b, t, peer.TxValidationCode_INVALID_OTHER_REASON)
 }
@@ -887,7 +888,7 @@ func testCCEventGoodPath(t *testing.T, l ledger.PeerLedger, v txvalidator.Valida
 	tx := getEnv(ccID, utils.MarshalOrPanic(&peer.ChaincodeEvent{ChaincodeId: ccID}), createRWset(t), t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertValid(b, t)
 }
@@ -931,7 +932,7 @@ func testInvokeOKPvtDataOnly(t *testing.T, l ledger.PeerLedger, v txvalidator.Va
 	tx := getEnv(ccID, nil, rwsetBytes, t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err = v.Validate(b)
+	err = v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_ENDORSEMENT_POLICY_FAILURE)
 }
@@ -975,7 +976,7 @@ func testInvokeOKMetaUpdateOnly(t *testing.T, l ledger.PeerLedger, v txvalidator
 	tx := getEnv(ccID, nil, rwsetBytes, t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err = v.Validate(b)
+	err = v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_ENDORSEMENT_POLICY_FAILURE)
 }
@@ -1019,7 +1020,7 @@ func testInvokeOKPvtMetaUpdateOnly(t *testing.T, l ledger.PeerLedger, v txvalida
 	tx := getEnv(ccID, nil, rwsetBytes, t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err = v.Validate(b)
+	err = v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_ENDORSEMENT_POLICY_FAILURE)
 }
@@ -1070,7 +1071,7 @@ func testInvokeOKSCC(t *testing.T, l ledger.PeerLedger, v txvalidator.Validator)
 	assert.NoError(t, err)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 1}}
 
-	err = v.Validate(b)
+	err = v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertValid(b, t)
 }
@@ -1101,7 +1102,7 @@ func testInvokeNOKWritesToLSCC(t *testing.T, l ledger.PeerLedger, v txvalidator.
 	tx := getEnv(ccID, nil, createRWset(t, ccID, "lscc"), t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 2}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_ILLEGAL_WRITESET)
 }
@@ -1135,7 +1136,7 @@ func testInvokeNOKWritesToESCC(t *testing.T, l ledger.PeerLedger, v txvalidator.
 		Header: &common.BlockHeader{},
 	}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_ILLEGAL_WRITESET)
 }
@@ -1169,7 +1170,7 @@ func testInvokeNOKWritesToNotExt(t *testing.T, l ledger.PeerLedger, v txvalidato
 		Header: &common.BlockHeader{},
 	}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_ILLEGAL_WRITESET)
 }
@@ -1203,7 +1204,7 @@ func testInvokeNOKInvokesNotExt(t *testing.T, l ledger.PeerLedger, v txvalidator
 		Header: &common.BlockHeader{},
 	}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_ILLEGAL_WRITESET)
 }
@@ -1237,7 +1238,7 @@ func testInvokeNOKInvokesEmptyCCName(t *testing.T, l ledger.PeerLedger, v txvali
 		Header: &common.BlockHeader{},
 	}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_INVALID_OTHER_REASON)
 }
@@ -1271,7 +1272,7 @@ func testInvokeNOKExpiredCC(t *testing.T, l ledger.PeerLedger, v txvalidator.Val
 		Header: &common.BlockHeader{},
 	}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_EXPIRED_CHAINCODE)
 }
@@ -1305,7 +1306,7 @@ func testInvokeNOKBogusActions(t *testing.T, l ledger.PeerLedger, v txvalidator.
 		Header: &common.BlockHeader{},
 	}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_BAD_RWSET)
 }
@@ -1337,7 +1338,7 @@ func testInvokeNOKCCDoesntExist(t *testing.T, l ledger.PeerLedger, v txvalidator
 		Header: &common.BlockHeader{},
 	}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_INVALID_OTHER_REASON)
 }
@@ -1371,7 +1372,7 @@ func testInvokeNOKVSCCUnspecified(t *testing.T, l ledger.PeerLedger, v txvalidat
 		Header: &common.BlockHeader{},
 	}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_INVALID_OTHER_REASON)
 }
@@ -1395,10 +1396,10 @@ func TestInvokeNoBlock(t *testing.T) {
 }
 
 func testInvokeNoBlock(t *testing.T, l ledger.PeerLedger, v txvalidator.Validator) {
-	err := v.Validate(&common.Block{
+	err := v.Validate(cached.WrapBlock(&common.Block{
 		Data:   &common.BlockData{Data: [][]byte{}},
 		Header: &common.BlockHeader{},
-	})
+	}))
 	assert.NoError(t, err)
 }
 
@@ -1449,7 +1450,7 @@ func validateTxWithStateBasedEndorsement(t *testing.T, l ledger.PeerLedger, v tx
 	tx := getEnv(ccID, nil, createRWset(t, ccID), t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 3}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 
 	return err, b
 }
@@ -1463,7 +1464,7 @@ func TestTokenValidTransaction(t *testing.T) {
 	tx := getTokenTx(t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 1}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertValid(b, t)
 }
@@ -1476,7 +1477,7 @@ func TestTokenCapabilityNotEnabled(t *testing.T) {
 	tx := getTokenTx(t)
 	b := &common.Block{Data: &common.BlockData{Data: [][]byte{utils.MarshalOrPanic(tx)}}, Header: &common.BlockHeader{Number: 1}}
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 
 	assertion := assert.New(t)
 	// We expect no validation error because we simply mark the tx as invalid
@@ -1760,7 +1761,7 @@ func TestDynamicCapabilitiesAndMSP(t *testing.T) {
 	}
 
 	// Perform a validation of a block
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertValid(b, t)
 	// Record the number of times the capabilities and the MSP Manager were invoked
@@ -1768,7 +1769,7 @@ func TestDynamicCapabilitiesAndMSP(t *testing.T) {
 	mspManagerInvokeCount := support.MSPManagerInvokeCount()
 
 	// Perform another validation pass, and ensure it is valid
-	err = v.Validate(b)
+	err = v.Validate(cached.WrapBlock(b))
 	assert.NoError(t, err)
 	assertValid(b, t)
 
@@ -1811,7 +1812,7 @@ func TestLedgerIsNoAvailable(t *testing.T) {
 		Header: &common.BlockHeader{},
 	}
 
-	err := validator.Validate(b)
+	err := validator.Validate(cached.WrapBlock(b))
 
 	assertion := assert.New(t)
 	// We suppose to get the error which indicates we cannot commit the block
@@ -1840,7 +1841,7 @@ func TestLedgerIsNotAvailableForCheckingTxidDuplicate(t *testing.T) {
 		Header: &common.BlockHeader{},
 	}
 
-	err := validator.Validate(b)
+	err := validator.Validate(cached.WrapBlock(b))
 
 	assertion := assert.New(t)
 	// We expect a validation error because the ledger wasn't ready to tell us whether there was a tx with that ID or not
@@ -1867,7 +1868,7 @@ func TestDuplicateTxId(t *testing.T) {
 		Header: &common.BlockHeader{},
 	}
 
-	err := validator.Validate(b)
+	err := validator.Validate(cached.WrapBlock(b))
 
 	assertion := assert.New(t)
 	// We expect no validation error because we simply mark the tx as invalid
@@ -1919,7 +1920,7 @@ func TestValidationInvalidEndorsing(t *testing.T) {
 	}
 
 	// Keep default callback
-	err := validator.Validate(b)
+	err := validator.Validate(cached.WrapBlock(b))
 	// Restore default callback
 	assert.NoError(t, err)
 	assertInvalid(b, t, peer.TxValidationCode_ENDORSEMENT_POLICY_FAILURE)
@@ -1963,7 +1964,7 @@ func TestValidationPluginExecutionError(t *testing.T) {
 		Reason: "I/O error",
 	})
 
-	err := v.Validate(b)
+	err := v.Validate(cached.WrapBlock(b))
 	executionErr := err.(*commonerrors.VSCCExecutionFailureError)
 	assert.Contains(t, executionErr.Error(), "I/O error")
 }
@@ -1986,7 +1987,7 @@ func TestValidationPluginNotFound(t *testing.T) {
 	pm.On("PluginFactoryByName", txvalidator.PluginName("vscc")).Return(nil)
 	mp := (&scc.MocksccProviderFactory{}).NewSystemChaincodeProvider()
 	validator := txvalidator.NewTxValidator("", vcs, mp, pm)
-	err := validator.Validate(b)
+	err := validator.Validate(cached.WrapBlock(b))
 	executionErr := err.(*commonerrors.VSCCExecutionFailureError)
 	assert.Contains(t, executionErr.Error(), "plugin with name vscc wasn't found")
 }

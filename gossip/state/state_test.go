@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"math/rand"
 	"net"
 	"sync"
@@ -57,7 +58,7 @@ var (
 		return nil
 	}
 
-	config = &Configuration{
+	conf = &Configuration{
 		AntiEntropyInterval:             DefAntiEntropyInterval,
 		AntiEntropyStateResponseTimeout: DefAntiEntropyStateResponseTimeout,
 		AntiEntropyBatchSize:            DefAntiEntropyBatchSize,
@@ -125,7 +126,7 @@ func (*cryptoServiceMock) GetPKIidOfCert(peerIdentity api.PeerIdentityType) comm
 
 // VerifyBlock returns nil if the block is properly signed,
 // else returns error
-func (*cryptoServiceMock) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock []byte) error {
+func (*cryptoServiceMock) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock *pcomm.Block) error {
 	return nil
 }
 
@@ -328,7 +329,7 @@ func (mock *ramLedger) GetBlockByNumber(blockNumber uint64) (*pcomm.Block, error
 	if blockAndPvtData, ok := mock.ledger[blockNumber]; !ok {
 		return nil, errors.New(fmt.Sprintf("no block with seq = %d found", blockNumber))
 	} else {
-		return blockAndPvtData.Block, nil
+		return blockAndPvtData.Block.Block, nil
 	}
 }
 
@@ -343,7 +344,7 @@ func newCommitter() committer.Committer {
 		ledger: make(map[uint64]*ledger.BlockAndPvtData),
 	}
 	ldgr.CommitWithPvtData(&ledger.BlockAndPvtData{
-		Block: cb,
+		Block: cached.WrapBlock(cb),
 	})
 	return committer.NewLedgerCommitter(ldgr)
 }
@@ -418,7 +419,7 @@ func newPeerNodeWithGossipWithValidatorWithMetrics(id int, committer committer.C
 		TransientStore: &mockTransientStore{},
 		Committer:      committer,
 	}, pcomm.SignedData{}, gossipMetrics.PrivdataMetrics, coordConfig)
-	sp := NewGossipStateProvider(util.GetTestChainID(), servicesAdapater, coord, gossipMetrics.StateMetrics, config)
+	sp := NewGossipStateProvider(util.GetTestChainID(), servicesAdapater, coord, gossipMetrics.StateMetrics, conf)
 	if sp == nil {
 		gRPCServer.Stop()
 		return nil, port
@@ -512,10 +513,8 @@ func TestAddPayloadLedgerUnavailable(t *testing.T) {
 	mc.Unlock()
 
 	rawblock := pcomm.NewBlock(uint64(1), []byte{})
-	b, _ := pb.Marshal(rawblock)
 	err := p.s.AddPayload(&proto.Payload{
-		SeqNum: uint64(1),
-		Data:   b,
+		Data: rawblock,
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Failed obtaining ledger height")
@@ -562,10 +561,8 @@ func TestLargeBlockGap(t *testing.T) {
 		// Populate the response with payloads according to what the peer asked
 		for seq := req.StartSeqNum; seq <= req.EndSeqNum; seq++ {
 			rawblock := pcomm.NewBlock(seq, []byte{})
-			b, _ := pb.Marshal(rawblock)
 			payload := &proto.Payload{
-				SeqNum: seq,
-				Data:   b,
+				Data: rawblock,
 			}
 			res.GetStateResponse().Payloads = append(res.GetStateResponse().Payloads, payload)
 		}
@@ -614,10 +611,8 @@ func TestOverPopulation(t *testing.T) {
 	// Add some blocks in a sequential manner and make sure it works
 	for i := 1; i <= 4; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
-		b, _ := pb.Marshal(rawblock)
 		assert.NoError(t, p.s.addPayload(&proto.Payload{
-			SeqNum: uint64(i),
-			Data:   b,
+			Data: rawblock,
 		}, NonBlocking))
 	}
 
@@ -625,10 +620,8 @@ func TestOverPopulation(t *testing.T) {
 	// Should succeed
 	for i := 10; i <= DefMaxBlockDistance; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
-		b, _ := pb.Marshal(rawblock)
 		assert.NoError(t, p.s.addPayload(&proto.Payload{
-			SeqNum: uint64(i),
-			Data:   b,
+			Data: rawblock,
 		}, NonBlocking))
 	}
 
@@ -636,10 +629,8 @@ func TestOverPopulation(t *testing.T) {
 	// Should fail.
 	for i := DefMaxBlockDistance + 1; i <= DefMaxBlockDistance*10; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
-		b, _ := pb.Marshal(rawblock)
 		assert.Error(t, p.s.addPayload(&proto.Payload{
-			SeqNum: uint64(i),
-			Data:   b,
+			Data: rawblock,
 		}, NonBlocking))
 	}
 
@@ -680,10 +671,8 @@ func TestBlockingEnqueue(t *testing.T) {
 	go func() {
 		for i := 1; i <= numBlocksReceived; i++ {
 			rawblock := pcomm.NewBlock(uint64(i), []byte{})
-			b, _ := pb.Marshal(rawblock)
 			block := &proto.Payload{
-				SeqNum: uint64(i),
-				Data:   b,
+				Data: rawblock,
 			}
 			p.s.AddPayload(block)
 			time.Sleep(time.Millisecond)
@@ -696,10 +685,8 @@ func TestBlockingEnqueue(t *testing.T) {
 		for i := 1; i <= numBlocksReceived/2; i++ {
 			blockSeq := rand.Intn(numBlocksReceived)
 			rawblock := pcomm.NewBlock(uint64(blockSeq), []byte{})
-			b, _ := pb.Marshal(rawblock)
 			block := &proto.Payload{
-				SeqNum: uint64(blockSeq),
-				Data:   b,
+				Data: rawblock,
 			}
 			p.s.addPayload(block, NonBlocking)
 			time.Sleep(time.Millisecond)
@@ -729,8 +716,8 @@ func TestHaltChainProcessing(t *testing.T) {
 	gossipChannel := func(c chan *proto.GossipMessage) <-chan *proto.GossipMessage {
 		return c
 	}
-	makeBlock := func(seq int) []byte {
-		b := &pcomm.Block{
+	makeBlock := func(seq int) *pcomm.Block {
+		return &pcomm.Block{
 			Header: &pcomm.BlockHeader{
 				Number: uint64(seq),
 			},
@@ -743,8 +730,6 @@ func TestHaltChainProcessing(t *testing.T) {
 				},
 			},
 		}
-		data, _ := pb.Marshal(b)
-		return data
 	}
 	newBlockMsg := func(i int) *proto.GossipMessage {
 		return &proto.GossipMessage{
@@ -752,8 +737,7 @@ func TestHaltChainProcessing(t *testing.T) {
 			Content: &proto.GossipMessage_DataMsg{
 				DataMsg: &proto.DataMessage{
 					Payload: &proto.Payload{
-						SeqNum: uint64(i),
-						Data:   makeBlock(i),
+						Data: makeBlock(i),
 					},
 				},
 			},
@@ -818,7 +802,6 @@ func TestGossipReception(t *testing.T) {
 			},
 		},
 	}
-	b, _ := pb.Marshal(rawblock)
 
 	newMsg := func(channel string) *proto.GossipMessage {
 		{
@@ -827,8 +810,7 @@ func TestGossipReception(t *testing.T) {
 				Content: &proto.GossipMessage_DataMsg{
 					DataMsg: &proto.DataMessage{
 						Payload: &proto.Payload{
-							SeqNum: 1,
-							Data:   b,
+							Data: rawblock,
 						},
 					},
 				},
@@ -1008,10 +990,9 @@ func TestAccessControl(t *testing.T) {
 
 	for i := 1; i <= msgCount; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
-		if b, err := pb.Marshal(rawblock); err == nil {
+		if _, err := pb.Marshal(rawblock); err == nil {
 			payload := &proto.Payload{
-				SeqNum: uint64(i),
-				Data:   b,
+				Data: rawblock,
 			}
 			bootstrapSet[0].s.AddPayload(payload)
 		} else {
@@ -1089,10 +1070,9 @@ func TestNewGossipStateProvider_SendingManyMessages(t *testing.T) {
 
 	for i := 1; i <= msgCount; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
-		if b, err := pb.Marshal(rawblock); err == nil {
+		if _, err := pb.Marshal(rawblock); err == nil {
 			payload := &proto.Payload{
-				SeqNum: uint64(i),
-				Data:   b,
+				Data: rawblock,
 			}
 			bootstrapSet[0].s.AddPayload(payload)
 		} else {
@@ -1218,10 +1198,9 @@ func TestNewGossipStateProvider_BatchingOfStateRequest(t *testing.T) {
 
 	for i := 1; i <= msgCount; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
-		if b, err := pb.Marshal(rawblock); err == nil {
+		if _, err := pb.Marshal(rawblock); err == nil {
 			payload := &proto.Payload{
-				SeqNum: uint64(i),
-				Data:   b,
+				Data: rawblock,
 			}
 			bootPeer.s.AddPayload(payload)
 		} else {
@@ -1305,9 +1284,9 @@ type coordinatorMock struct {
 	mock.Mock
 }
 
-func (mock *coordinatorMock) GetPvtDataAndBlockByNum(seqNum uint64, _ pcomm.SignedData) (*pcomm.Block, gutil.PvtDataCollections, error) {
+func (mock *coordinatorMock) GetPvtDataAndBlockByNum(seqNum uint64, _ pcomm.SignedData) (*cached.Block, gutil.PvtDataCollections, error) {
 	args := mock.Called(seqNum)
-	return args.Get(0).(*pcomm.Block), args.Get(1).(gutil.PvtDataCollections), args.Error(2)
+	return cached.WrapBlock(args.Get(0).(*pcomm.Block)), args.Get(1).(gutil.PvtDataCollections), args.Error(2)
 }
 
 func (mock *coordinatorMock) GetBlockByNum(seqNum uint64) (*pcomm.Block, error) {
@@ -1315,7 +1294,7 @@ func (mock *coordinatorMock) GetBlockByNum(seqNum uint64) (*pcomm.Block, error) 
 	return args.Get(0).(*pcomm.Block), args.Error(1)
 }
 
-func (mock *coordinatorMock) StoreBlock(block *pcomm.Block, data gutil.PvtDataCollections) error {
+func (mock *coordinatorMock) StoreBlock(block *cached.Block, data gutil.PvtDataCollections) error {
 	args := mock.Called(block, data)
 	return args.Error(1)
 }
@@ -1465,7 +1444,7 @@ func TestTransferOfPrivateRWSet(t *testing.T) {
 
 	servicesAdapater := &ServicesMediator{GossipAdapter: g, MCSAdapter: &cryptoServiceMock{acceptor: noopPeerIdentityAcceptor}}
 	stateMetrics := metrics.NewGossipMetrics(&disabled.Provider{}).StateMetrics
-	st := NewGossipStateProvider(chainID, servicesAdapater, coord1, stateMetrics, config)
+	st := NewGossipStateProvider(chainID, servicesAdapater, coord1, stateMetrics, conf)
 	defer st.Stop()
 
 	// Mocked state request message
@@ -1527,9 +1506,7 @@ func TestTransferOfPrivateRWSet(t *testing.T) {
 
 	// Assert we have all data and it's same as we expected it
 	for _, each := range stateResponse.Payloads {
-		block := &pcomm.Block{}
-		err := pb.Unmarshal(each.Data, block)
-		assertion.NoError(err)
+		block := each.Data
 
 		assertion.NotNil(block.Header)
 
@@ -1699,11 +1676,11 @@ func TestTransferOfPvtDataBetweenPeers(t *testing.T) {
 	stateMetrics := metrics.NewGossipMetrics(&disabled.Provider{}).StateMetrics
 
 	mediator := &ServicesMediator{GossipAdapter: peers["peer1"], MCSAdapter: cryptoService}
-	peer1State := NewGossipStateProvider(chainID, mediator, peers["peer1"].coord, stateMetrics, config)
+	peer1State := NewGossipStateProvider(chainID, mediator, peers["peer1"].coord, stateMetrics, conf)
 	defer peer1State.Stop()
 
 	mediator = &ServicesMediator{GossipAdapter: peers["peer2"], MCSAdapter: cryptoService}
-	peer2State := NewGossipStateProvider(chainID, mediator, peers["peer2"].coord, stateMetrics, config)
+	peer2State := NewGossipStateProvider(chainID, mediator, peers["peer2"].coord, stateMetrics, conf)
 	defer peer2State.Stop()
 
 	// Make sure state was replicated

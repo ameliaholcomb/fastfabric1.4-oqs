@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package ledgerstorage
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"github.com/hyperledger/fabric/fastfabric/config"
 	fffsblkstorage "github.com/hyperledger/fabric/fastfabric/fsblkstorage"
 	"sync"
@@ -139,7 +140,7 @@ func (s *Store) CommitWithPvtData(blockAndPvtdata *ledger.BlockAndPvtData) error
 		logger.Debugf("Skipping writing block [%d] to pvt block store as the store height is [%d]", blockNum, pvtBlkStoreHt)
 	}
 
-	if err := s.AddBlock(blockAndPvtdata.Block); err != nil {
+	if err := s.AddBlock(blockAndPvtdata.Block.Block); err != nil {
 		s.pvtdataStore.Rollback()
 		return err
 	}
@@ -203,7 +204,7 @@ func (s *Store) GetPvtDataAndBlockByNum(blockNum uint64, filter ledger.PvtNsColl
 	if pvtdata, err = s.getPvtDataByNumWithoutLock(blockNum, filter); err != nil {
 		return nil, err
 	}
-	return &ledger.BlockAndPvtData{Block: block, PvtData: constructPvtdataMap(pvtdata)}, nil
+	return &ledger.BlockAndPvtData{Block: cached.WrapBlock(block), PvtData: constructPvtdataMap(pvtdata)}, nil
 }
 
 // GetPvtDataByNum returns only the pvt data  corresponding to the given block number

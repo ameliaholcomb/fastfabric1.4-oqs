@@ -9,6 +9,7 @@ package pull
 import (
 	"bytes"
 	"fmt"
+	"github.com/hyperledger/fabric/protos/common"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -158,10 +159,10 @@ func createPullInstanceWithFilters(endpoint string, peer2PullInst map[string]*pu
 		if dataMsg.Payload == nil {
 			return ""
 		}
-		return fmt.Sprintf("%d", dataMsg.Payload.SeqNum)
+		return fmt.Sprintf("%d", dataMsg.Payload.Data.Header.Number)
 	}
 	blockConsumer := func(msg *proto.SignedGossipMessage) {
-		inst.items.Add(msg.GetDataMsg().Payload.SeqNum)
+		inst.items.Add(msg.GetDataMsg().Payload.Data.Header.Number)
 	}
 	inst.pullAdapter = &PullAdapter{
 		Sndr:             inst,
@@ -427,8 +428,7 @@ func dataMsg(seqNum int) *proto.SignedGossipMessage {
 		Content: &proto.GossipMessage_DataMsg{
 			DataMsg: &proto.DataMessage{
 				Payload: &proto.Payload{
-					Data:   []byte{},
-					SeqNum: uint64(seqNum),
+					Data: &common.Block{Header: &common.BlockHeader{Number: uint64(seqNum)}},
 				},
 			},
 		},

@@ -8,6 +8,7 @@ package integration
 
 import (
 	"fmt"
+	common2 "github.com/hyperledger/fabric/protos/common"
 	"net"
 	"strings"
 	"testing"
@@ -102,7 +103,7 @@ func (s *cryptoService) GetPKIidOfCert(peerIdentity api.PeerIdentityType) common
 	return common.PKIidType(peerIdentity)
 }
 
-func (s *cryptoService) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock []byte) error {
+func (s *cryptoService) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock *common2.Block) error {
 	return nil
 }
 

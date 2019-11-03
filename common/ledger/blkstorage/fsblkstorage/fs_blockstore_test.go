@@ -33,9 +33,9 @@ func TestWrongBlockNumber(t *testing.T) {
 
 	blocks := testutil.ConstructTestBlocks(t, 5)
 	for i := 0; i < 3; i++ {
-		err := store.AddBlock(blocks[i])
+		err := store.AddBlock(blocks[i].Block)
 		assert.NoError(t, err)
 	}
-	err := store.AddBlock(blocks[4])
+	err := store.AddBlock(blocks[4].Block)
 	assert.Error(t, err, "Error shold have been thrown when adding block number 4 while block number 3 is expected")
 }

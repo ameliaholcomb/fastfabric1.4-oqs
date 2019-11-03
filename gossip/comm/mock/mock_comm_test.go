@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package mock
 
 import (
+	common2 "github.com/hyperledger/fabric/protos/common"
 	"testing"
 
 	"github.com/hyperledger/fabric/gossip/comm"
@@ -68,8 +69,7 @@ func TestMockComm_PingPong(t *testing.T) {
 		Content: &proto.GossipMessage_DataMsg{
 			DataMsg: &proto.DataMessage{
 				Payload: &proto.Payload{
-					SeqNum: 1,
-					Data:   []byte("Ping"),
+					Data: &common2.Block{Header: &common2.BlockHeader{Number: 1}},
 				},
 			}},
 	}).NoopSign()
@@ -77,22 +77,19 @@ func TestMockComm_PingPong(t *testing.T) {
 
 	msg := <-rcvChB
 	dataMsg := msg.GetGossipMessage().GetDataMsg()
-	data := string(dataMsg.Payload.Data)
-	assert.Equal(t, "Ping", data)
+	assert.Equal(t, "1", dataMsg.Payload.Data.Header.Number)
 
 	msg.Respond(&proto.GossipMessage{
 		Content: &proto.GossipMessage_DataMsg{
 			DataMsg: &proto.DataMessage{
 				Payload: &proto.Payload{
-					SeqNum: 1,
-					Data:   []byte("Pong"),
+					Data: &common2.Block{Header: &common2.BlockHeader{Number: 2}},
 				},
 			}},
 	})
 
 	msg = <-rcvChA
 	dataMsg = msg.GetGossipMessage().GetDataMsg()
-	data = string(dataMsg.Payload.Data)
-	assert.Equal(t, "Pong", data)
+	assert.Equal(t, "2", dataMsg.Payload.Data.Header.Number)
 
 }

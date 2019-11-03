@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package historyleveldb
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"os"
 	"strconv"
 	"testing"
@@ -47,7 +48,7 @@ func TestSavepoint(t *testing.T) {
 	assert.Equal(t, uint64(0), blockNum)
 
 	bg, gb := testutil.NewBlockGenerator(t, "testLedger", false)
-	assert.NoError(t, env.testHistoryDB.Commit(gb))
+	assert.NoError(t, env.testHistoryDB.Commit(cached.WrapBlock(gb)))
 	// read the savepoint, it should now exist and return a Height object with BlockNum 0
 	savepoint, err = env.testHistoryDB.GetLastSavepoint()
 	assert.NoError(t, err, "Error upon historyDatabase.GetLastSavepoint()")
@@ -105,7 +106,7 @@ func TestHistory(t *testing.T) {
 
 	bg, gb := testutil.NewBlockGenerator(t, ledger1id, false)
 	assert.NoError(t, store1.AddBlock(gb))
-	assert.NoError(t, env.testHistoryDB.Commit(gb))
+	assert.NoError(t, env.testHistoryDB.Commit(cached.WrapBlock(gb)))
 
 	//block1
 	txid := util2.GenerateUUID()
@@ -116,7 +117,7 @@ func TestHistory(t *testing.T) {
 	simRes, _ := simulator.GetTxSimulationResults()
 	pubSimResBytes, _ := simRes.GetPubSimulationBytes()
 	block1 := bg.NextBlock([][]byte{pubSimResBytes})
-	err = store1.AddBlock(block1)
+	err = store1.AddBlock(block1.Block)
 	assert.NoError(t, err)
 	err = env.testHistoryDB.Commit(block1)
 	assert.NoError(t, err)
@@ -141,7 +142,7 @@ func TestHistory(t *testing.T) {
 	pubSimResBytes2, _ := simRes2.GetPubSimulationBytes()
 	simulationResults = append(simulationResults, pubSimResBytes2)
 	block2 := bg.NextBlock(simulationResults)
-	err = store1.AddBlock(block2)
+	err = store1.AddBlock(block2.Block)
 	assert.NoError(t, err)
 	err = env.testHistoryDB.Commit(block2)
 	assert.NoError(t, err)
@@ -154,7 +155,7 @@ func TestHistory(t *testing.T) {
 	simRes, _ = simulator.GetTxSimulationResults()
 	pubSimResBytes, _ = simRes.GetPubSimulationBytes()
 	block3 := bg.NextBlock([][]byte{pubSimResBytes})
-	err = store1.AddBlock(block3)
+	err = store1.AddBlock(block3.Block)
 	assert.NoError(t, err)
 	err = env.testHistoryDB.Commit(block3)
 	assert.NoError(t, err)
@@ -204,7 +205,7 @@ func TestHistoryForInvalidTran(t *testing.T) {
 
 	bg, gb := testutil.NewBlockGenerator(t, ledger1id, false)
 	assert.NoError(t, store1.AddBlock(gb))
-	assert.NoError(t, env.testHistoryDB.Commit(gb))
+	assert.NoError(t, env.testHistoryDB.Commit(cached.WrapBlock(gb)))
 
 	//block1
 	txid := util2.GenerateUUID()
@@ -221,7 +222,7 @@ func TestHistoryForInvalidTran(t *testing.T) {
 	txsFilter.SetFlag(0, peer.TxValidationCode_INVALID_OTHER_REASON)
 	block1.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txsFilter
 
-	err = store1.AddBlock(block1)
+	err = store1.AddBlock(block1.Block)
 	assert.NoError(t, err)
 	err = env.testHistoryDB.Commit(block1)
 	assert.NoError(t, err)
@@ -256,7 +257,7 @@ func TestGenesisBlockNoError(t *testing.T) {
 	defer env.cleanup()
 	block, err := configtxtest.MakeGenesisBlock("test_chainid")
 	assert.NoError(t, err)
-	err = env.testHistoryDB.Commit(block)
+	err = env.testHistoryDB.Commit(cached.WrapBlock(block))
 	assert.NoError(t, err)
 }
 
@@ -273,7 +274,7 @@ func TestHistoryWithKeyContainingNilBytes(t *testing.T) {
 
 	bg, gb := testutil.NewBlockGenerator(t, ledger1id, false)
 	assert.NoError(t, store1.AddBlock(gb))
-	assert.NoError(t, env.testHistoryDB.Commit(gb))
+	assert.NoError(t, env.testHistoryDB.Commit(cached.WrapBlock(gb)))
 
 	//block1
 	txid := util2.GenerateUUID()
@@ -283,7 +284,7 @@ func TestHistoryWithKeyContainingNilBytes(t *testing.T) {
 	simRes, _ := simulator.GetTxSimulationResults()
 	pubSimResBytes, _ := simRes.GetPubSimulationBytes()
 	block1 := bg.NextBlock([][]byte{pubSimResBytes})
-	err = store1.AddBlock(block1)
+	err = store1.AddBlock(block1.Block)
 	assert.NoError(t, err)
 	err = env.testHistoryDB.Commit(block1)
 	assert.NoError(t, err)
@@ -309,7 +310,7 @@ func TestHistoryWithKeyContainingNilBytes(t *testing.T) {
 	pubSimResBytes2, _ := simRes2.GetPubSimulationBytes()
 	simulationResults = append(simulationResults, pubSimResBytes2)
 	block2 := bg.NextBlock(simulationResults)
-	err = store1.AddBlock(block2)
+	err = store1.AddBlock(block2.Block)
 	assert.NoError(t, err)
 	err = env.testHistoryDB.Commit(block2)
 	assert.NoError(t, err)

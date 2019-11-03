@@ -314,7 +314,7 @@ func (l *kvLedger) CommitWithPvtData(pvtdataAndBlock *ledger.BlockAndPvtData) er
 			panic(err)
 		}
 		pl := &gossip.Payload{
-			Data: block,
+			Data: block.Block,
 		}
 		ffgossip.Queue[blockNo] <- pl
 		logger.Infof("queuing block [%d] done", blockNo)

@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	common2 "github.com/hyperledger/fabric/protos/common"
 	"math/rand"
 	"reflect"
 	"runtime"
@@ -190,7 +191,7 @@ func (*naiveCryptoService) GetPKIidOfCert(peerIdentity api.PeerIdentityType) com
 
 // VerifyBlock returns nil if the block is properly signed,
 // else returns error
-func (*naiveCryptoService) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock []byte) error {
+func (*naiveCryptoService) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock *common2.Block) error {
 	return nil
 }
 
@@ -1517,8 +1518,7 @@ func createDataMsg(seqnum uint64, data []byte, channel common.ChainID) *proto.Go
 		Content: &proto.GossipMessage_DataMsg{
 			DataMsg: &proto.DataMessage{
 				Payload: &proto.Payload{
-					Data:   data,
-					SeqNum: seqnum,
+					Data: &common2.Block{Header: &common2.BlockHeader{Number: seqnum}},
 				},
 			},
 		},

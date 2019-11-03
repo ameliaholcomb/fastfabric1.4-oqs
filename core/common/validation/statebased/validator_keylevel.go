@@ -8,6 +8,7 @@ package statebased
 
 import (
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"sync"
 
 	commonerrors "github.com/hyperledger/fabric/common/errors"
@@ -130,7 +131,7 @@ func NewKeyLevelValidator(policySupport validation.PolicyEvaluator, vpmgr KeyLev
 	}
 }
 
-func (klv *KeyLevelValidator) invokeOnce(block *common.Block, txnum uint64) *sync.Once {
+func (klv *KeyLevelValidator) invokeOnce(block *cached.Block, txnum uint64) *sync.Once {
 	klv.blockDep.mutex.Lock()
 	defer klv.blockDep.mutex.Unlock()
 
@@ -183,7 +184,7 @@ func (klv *KeyLevelValidator) extractDependenciesForTx(blockNum, txNum uint64, e
 }
 
 // PreValidate implements the function of the StateBasedValidator interface
-func (klv *KeyLevelValidator) PreValidate(txNum uint64, block *common.Block) {
+func (klv *KeyLevelValidator) PreValidate(txNum uint64, block *cached.Block) {
 	for i := int64(txNum); i >= 0; i-- {
 		txPosition := uint64(i)
 

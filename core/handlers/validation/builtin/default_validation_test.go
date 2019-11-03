@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package builtin
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"testing"
 
 	commonerrors "github.com/hyperledger/fabric/common/errors"
@@ -45,12 +46,12 @@ func TestErrorConversion(t *testing.T) {
 		TxValidatorV1_2: validator,
 		Capabilities:    capabilities,
 	}
-	block := &common.Block{
+	block := cached.WrapBlock(&common.Block{
 		Header: &common.BlockHeader{},
 		Data: &common.BlockData{
 			Data: [][]byte{{}},
 		},
-	}
+	})
 
 	capabilities.On("V1_3Validation").Return(false)
 	capabilities.On("V1_2Validation").Return(true)
@@ -88,12 +89,12 @@ func TestValidateBadInput(t *testing.T) {
 	err := validation.Validate(nil, "", 0, 0, txvalidator.SerializedPolicy("policy"))
 	assert.Equal(t, "empty block", err.Error())
 
-	block := &common.Block{
+	block := cached.WrapBlock(&common.Block{
 		Header: &common.BlockHeader{},
 		Data: &common.BlockData{
 			Data: [][]byte{{}},
 		},
-	}
+	})
 	// Scenario II: Block with 1 transaction, but position is at 1 also
 	validator.On("Validate", mock.Anything, mock.Anything).Return(nil).Once()
 	err = validation.Validate(block, "", 1, 0, txvalidator.SerializedPolicy("policy"))
@@ -101,33 +102,33 @@ func TestValidateBadInput(t *testing.T) {
 
 	// Scenario III: Block without header
 	validator.On("Validate", mock.Anything, mock.Anything).Return(nil).Once()
-	err = validation.Validate(&common.Block{
+	err = validation.Validate(cached.WrapBlock(&common.Block{
 		Data: &common.BlockData{
 			Data: [][]byte{{}},
 		},
-	}, "", 0, 0, txvalidator.SerializedPolicy("policy"))
+	}), "", 0, 0, txvalidator.SerializedPolicy("policy"))
 	assert.Equal(t, "no block header", err.Error())
 
 	// Scenario IV: No serialized policy passed
 	assert.Panics(t, func() {
 		validator.On("Validate", mock.Anything, mock.Anything).Return(nil).Once()
-		err = validation.Validate(&common.Block{
+		err = validation.Validate(cached.WrapBlock(&common.Block{
 			Header: &common.BlockHeader{},
 			Data: &common.BlockData{
 				Data: [][]byte{{}},
 			},
-		}, "", 0, 0)
+		}), "", 0, 0)
 	})
 
 	// Scenario V: Policy passed isn't a serialized policy
 	assert.Panics(t, func() {
 		validator.On("Validate", mock.Anything, mock.Anything).Return(nil).Once()
-		err = validation.Validate(&common.Block{
+		err = validation.Validate(cached.WrapBlock(&common.Block{
 			Header: &common.BlockHeader{},
 			Data: &common.BlockData{
 				Data: [][]byte{{}},
 			},
-		}, "", 0, 0, []byte("policy"))
+		}), "", 0, 0, []byte("policy"))
 	})
 
 }

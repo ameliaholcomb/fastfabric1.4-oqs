@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	common2 "github.com/hyperledger/fabric/protos/common"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -133,7 +134,7 @@ func (cs *cryptoService) VerifyByChannel(channel common.ChainID, identity api.Pe
 	return args.Get(0).(error)
 }
 
-func (cs *cryptoService) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock []byte) error {
+func (cs *cryptoService) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock *common2.Block) error {
 	args := cs.Called(signedBlock)
 	if args.Get(0) == nil {
 		return nil
@@ -655,7 +656,7 @@ func TestChannelPull(t *testing.T) {
 		case <-time.After(time.Second * 5):
 			t.Fatal("Haven't received blocks on time")
 		case msg := <-receivedBlocksChan:
-			assert.Equal(t, uint64(expectedSeq), msg.GetDataMsg().Payload.SeqNum)
+			assert.Equal(t, uint64(expectedSeq), msg.GetDataMsg().Payload.Data.Header.Number)
 		}
 	}
 }
@@ -1818,7 +1819,7 @@ func TestChannelPullWithDigestsFilter(t *testing.T) {
 	case <-time.After(time.Second * 5):
 		t.Fatal("Haven't received blocks on time")
 	case msg := <-receivedBlocksChan:
-		assert.Equal(t, uint64(11), msg.GetDataMsg().Payload.SeqNum)
+		assert.Equal(t, uint64(11), msg.GetDataMsg().Payload.Data.Header.Number)
 	}
 
 }
@@ -1867,8 +1868,7 @@ func dataMsgOfChannel(seqnum uint64, channel common.ChainID) *proto.SignedGossip
 		Content: &proto.GossipMessage_DataMsg{
 			DataMsg: &proto.DataMessage{
 				Payload: &proto.Payload{
-					Data:   []byte{},
-					SeqNum: seqnum,
+					Data: &common2.Block{Header: &common2.BlockHeader{Number: seqnum}},
 				},
 			},
 		},
@@ -1919,8 +1919,7 @@ func createDataMsg(seqnum uint64, channel common.ChainID) *proto.SignedGossipMes
 		Content: &proto.GossipMessage_DataMsg{
 			DataMsg: &proto.DataMessage{
 				Payload: &proto.Payload{
-					Data:   []byte{},
-					SeqNum: seqnum,
+					Data: &common2.Block{Header: &common2.BlockHeader{Number: seqnum}},
 				},
 			},
 		},

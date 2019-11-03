@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package testdata
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -54,7 +55,7 @@ func (*MarshaledSignedData) ProtoMessage() {
 	panic("implement me")
 }
 
-func (p *SampleValidationPlugin) Validate(block *common.Block, namespace string, txPosition int, actionPosition int, contextData ...validation.ContextDatum) error {
+func (p *SampleValidationPlugin) Validate(block *cached.Block, namespace string, txPosition int, actionPosition int, contextData ...validation.ContextDatum) error {
 	txData := block.Data.Data[0]
 	txn := &MarshaledSignedData{}
 	err := proto.Unmarshal(txData, txn)

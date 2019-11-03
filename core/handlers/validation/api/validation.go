@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 package validation
 
-import "github.com/hyperledger/fabric/protos/common"
+import "github.com/hyperledger/fabric/fastfabric/cached"
 
 // Argument defines the argument for validation
 type Argument interface {
@@ -26,7 +26,7 @@ type ContextDatum interface{}
 type Plugin interface {
 	// Validate returns nil if the action at the given position inside the transaction
 	// at the given position in the given block is valid, or an error if not.
-	Validate(block *common.Block, namespace string, txPosition int, actionPosition int, contextData ...ContextDatum) error
+	Validate(block *cached.Block, namespace string, txPosition int, actionPosition int, contextData ...ContextDatum) error
 
 	// Init injects dependencies into the instance of the Plugin
 	Init(dependencies ...Dependency) error
