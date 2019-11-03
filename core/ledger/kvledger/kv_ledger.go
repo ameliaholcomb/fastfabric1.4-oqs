@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package kvledger
 
 import (
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/fastfabric/config"
 	ffgossip "github.com/hyperledger/fabric/fastfabric/gossip"
 	"github.com/hyperledger/fabric/protos/gossip"
@@ -311,13 +310,11 @@ func (l *kvLedger) CommitWithPvtData(pvtdataAndBlock *ledger.BlockAndPvtData) er
 
 	if !(config.IsEndorser || config.IsStorage) && blockNo > 1 {
 		logger.Infof("queuing block [%d] for gossip", blockNo)
-		marshaledBlock, err := proto.Marshal(block)
 		if err != nil {
 			panic(err)
 		}
 		pl := &gossip.Payload{
-			Data:   marshaledBlock,
-			SeqNum: blockNo,
+			Data: block,
 		}
 		ffgossip.Queue[blockNo] <- pl
 		logger.Infof("queuing block [%d] done", blockNo)

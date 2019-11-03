@@ -208,7 +208,7 @@ func NewGossipChannel(pkiID common.PKIidType, org api.OrgIdentityType, mcs api.M
 	gc.blocksPuller = gc.createBlockPuller()
 
 	seqNumFromMsg := func(m interface{}) string {
-		return fmt.Sprintf("%d", m.(*proto.SignedGossipMessage).GetDataMsg().Payload.SeqNum)
+		return fmt.Sprintf("%d", m.(*proto.SignedGossipMessage).GetDataMsg().Payload.Data.Header.Number)
 	}
 	gc.blockMsgStore = msgstore.NewMessageStoreExpirable(comparator, func(m interface{}) {
 		gc.logger.Debugf("Removing %s from the message store", seqNumFromMsg(m))
@@ -423,7 +423,7 @@ func (gc *gossipChannel) createBlockPuller() pull.Mediator {
 			gc.logger.Warning("Non-data block or with no payload")
 			return ""
 		}
-		return fmt.Sprintf("%d", dataMsg.Payload.SeqNum)
+		return fmt.Sprintf("%d", dataMsg.Payload.Data.Header.Number)
 	}
 	adapter := &pull.PullAdapter{
 		Sndr:        gc,
@@ -602,7 +602,7 @@ func (gc *gossipChannel) HandleMessage(msg proto.ReceivedMessage) {
 				return
 			}
 			if !gc.verifyBlock(m.GossipMessage, msg.GetConnectionInfo().ID) {
-				gc.logger.Warning("Failed verifying block", m.GetDataMsg().Payload.SeqNum)
+				gc.logger.Warning("Failed verifying block", m.GetDataMsg().Payload.Data.Header.Number)
 				return
 			}
 			gc.Lock()
@@ -757,7 +757,7 @@ func (gc *gossipChannel) verifyBlock(msg *proto.GossipMessage, sender common.PKI
 		gc.logger.Warning("Received empty payload from", sender)
 		return false
 	}
-	seqNum := payload.SeqNum
+	seqNum := payload.Data.Header.Number
 	rawBlock := payload.Data
 	err := gc.mcs.VerifyBlock(msg.Channel, seqNum, rawBlock)
 	if err != nil {

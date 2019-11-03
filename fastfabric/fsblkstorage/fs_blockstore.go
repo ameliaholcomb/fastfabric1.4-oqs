@@ -87,6 +87,9 @@ func (b *BlockStoreImpl) RetrieveBlockByHash(blockHash []byte) (*common.Block, e
 
 func (b *BlockStoreImpl) RetrieveBlockByNumber(blockNum uint64) (*common.Block, error) {
 	if blockNum <= 1 {
+		if uint64(len(b.initialBlocks)) < blockNum+1 {
+			return nil, nil
+		}
 		return b.initialBlocks[blockNum], nil
 	}
 	return b.client.RetrieveBlockByNumber(context.Background(), &remote.RetrieveBlockByNumberRequest{

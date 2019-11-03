@@ -78,10 +78,10 @@ func (b *PayloadsBufferImpl) Push(payload *proto.Payload) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	seqNum := payload.SeqNum
+	seqNum := payload.Data.Header.Number
 
 	if seqNum < b.next || b.buf[seqNum] != nil {
-		logger.Debugf("Payload with sequence number = %d has been already processed", payload.SeqNum)
+		logger.Debugf("Payload with sequence number = %d has been already processed", seqNum)
 		return
 	}
 

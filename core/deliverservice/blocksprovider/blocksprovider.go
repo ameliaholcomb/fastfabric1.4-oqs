@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/gossip/api"
 	gossipcommon "github.com/hyperledger/fabric/gossip/common"
@@ -167,19 +166,14 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 			}
 			logger.Infof("received block [%d]", blockNum)
 
-			marshaledBlock, err := proto.Marshal(t.Block)
-			if err != nil {
-				logger.Errorf("[%s] Error serializing block with sequence number %d, due to %s", b.chainID, blockNum, err)
-				continue
-			}
-			if err := b.mcs.VerifyBlock(gossipcommon.ChainID(b.chainID), blockNum, marshaledBlock); err != nil {
+			if err := b.mcs.VerifyBlock(gossipcommon.ChainID(b.chainID), blockNum, t.Block); err != nil {
 				logger.Errorf("[%s] Error verifying block with sequnce number %d, due to %s", b.chainID, blockNum, err)
 				continue
 			}
 
 			numberOfPeers := len(b.gossip.PeersOfChannel(gossipcommon.ChainID(b.chainID)))
 			// Create payload with a block received
-			payload := createPayload(blockNum, marshaledBlock)
+			payload := createPayload(t.Block)
 
 			logger.Debugf("[%s] Adding payload to local buffer, blockNum = [%d]", b.chainID, blockNum)
 			// Add payload to local state payloads buffer
@@ -261,9 +255,8 @@ func createGossipMsg(chainID string, payload *gossip_proto.Payload) *gossip_prot
 	return gossipMsg
 }
 
-func createPayload(seqNum uint64, marshaledBlock []byte) *gossip_proto.Payload {
+func createPayload(block *common.Block) *gossip_proto.Payload {
 	return &gossip_proto.Payload{
-		Data:   marshaledBlock,
-		SeqNum: seqNum,
+		Data: block,
 	}
 }
