@@ -290,6 +290,34 @@ func (pl *Payload) UnmarshalTransaction() (*Transaction, error) {
 	return tx, nil
 }
 
+func (pl *Payload) UnmarshalChaincodeAction() (*ChaincodeAction, error) {
+	tx, err := pl.UnmarshalTransaction()
+	if err != nil {
+		return nil, err
+	}
+	capl, err := tx.UnmarshalChaincodeActionPayload()
+	if err != nil {
+		return nil, err
+	}
+	prpl, err := capl.Action.UnmarshalProposalResponsePayload()
+	if err != nil {
+		return nil, err
+	}
+	return prpl.UnmarshalChaincodeAction()
+
+}
+
+func (tx *Transaction) UnmarshalChaincodeActionPayload() (*ChaincodeActionPayload, error) {
+	if len(tx.Actions) < 1 {
+		return nil, errors.New("transaction should have at least one action")
+	}
+	capl, err := tx.Actions[0].UnmarshalChaincodeActionPayload()
+	if err != nil {
+		return nil, err
+	}
+	return capl, nil
+}
+
 func (act *TransactionAction) UnmarshalSignatureHeader() (*common.SignatureHeader, error) {
 	if act.cachedSigHeader != nil {
 		return act.cachedSigHeader, nil

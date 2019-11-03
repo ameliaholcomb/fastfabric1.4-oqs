@@ -9,6 +9,8 @@ package channel
 import (
 	"bytes"
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
+	"github.com/hyperledger/fabric/fastfabric/config"
 	"reflect"
 	"strconv"
 	"sync"
@@ -601,9 +603,11 @@ func (gc *gossipChannel) HandleMessage(msg proto.ReceivedMessage) {
 			if !gc.blockMsgStore.CheckValid(msg.GetGossipMessage()) {
 				return
 			}
-			if !gc.verifyBlock(m.GossipMessage, msg.GetConnectionInfo().ID) {
-				gc.logger.Warning("Failed verifying block", m.GetDataMsg().Payload.Data.Header.Number)
-				return
+			if !(config.IsEndorser || config.IsStorage) {
+				if !gc.verifyBlock(m.GossipMessage, msg.GetConnectionInfo().ID) {
+					gc.logger.Warning("Failed verifying block", m.GetDataMsg().Payload.Data.Header.Number)
+					return
+				}
 			}
 			gc.Lock()
 			added = gc.blockMsgStore.Add(msg.GetGossipMessage())
@@ -758,8 +762,8 @@ func (gc *gossipChannel) verifyBlock(msg *proto.GossipMessage, sender common.PKI
 		return false
 	}
 	seqNum := payload.Data.Header.Number
-	rawBlock := payload.Data
-	err := gc.mcs.VerifyBlock(msg.Channel, seqNum, rawBlock)
+	block := cached.WrapBlock(payload.Data)
+	err := gc.mcs.VerifyBlock(msg.Channel, seqNum, block)
 	if err != nil {
 		gc.logger.Warningf("Received fabricated block from %v in DataUpdate: %+v", sender, errors.WithStack(err))
 		return false
