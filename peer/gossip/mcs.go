@@ -9,6 +9,7 @@ package gossip
 import (
 	"bytes"
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"time"
 
 	"github.com/hyperledger/fabric/bccsp"
@@ -22,7 +23,6 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	"github.com/hyperledger/fabric/msp/mgmt"
 	pcommon "github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/utils"
 	"github.com/pkg/errors"
 )
 
@@ -107,7 +107,7 @@ func (s *MSPMessageCryptoService) GetPKIidOfCert(peerIdentity api.PeerIdentityTy
 // VerifyBlock returns nil if the block is properly signed, and the claimed seqNum is the
 // sequence number that the block's header contains.
 // else returns error
-func (s *MSPMessageCryptoService) VerifyBlock(chainID common.ChainID, seqNum uint64, block *pcommon.Block) error {
+func (s *MSPMessageCryptoService) VerifyBlock(chainID common.ChainID, seqNum uint64, block *cached.Block) error {
 	if block.Header == nil {
 		return fmt.Errorf("Invalid Block on channel [%s]. Header must be different from nil.", chainID)
 	}
@@ -120,7 +120,7 @@ func (s *MSPMessageCryptoService) VerifyBlock(chainID common.ChainID, seqNum uin
 	}
 
 	// - Extract channelID and compare with chainID
-	channelID, err := utils.GetChainIDFromBlock(block)
+	channelID, err := block.GetChannelId()
 	if err != nil {
 		return fmt.Errorf("Failed getting channel id from block with id [%d] on channel [%s]: [%s]", block.Header.Number, chainID, err)
 	}
@@ -134,7 +134,7 @@ func (s *MSPMessageCryptoService) VerifyBlock(chainID common.ChainID, seqNum uin
 		return fmt.Errorf("Block with id [%d] on channel [%s] does not have metadata. Block not valid.", block.Header.Number, chainID)
 	}
 
-	metadata, err := utils.GetMetadataFromBlock(block, pcommon.BlockMetadataIndex_SIGNATURES)
+	metadata, err := block.UnmarshalSpecificMetadata(pcommon.BlockMetadataIndex_SIGNATURES)
 	if err != nil {
 		return fmt.Errorf("Failed unmarshalling medatata for signatures [%s]", err)
 	}
@@ -160,17 +160,17 @@ func (s *MSPMessageCryptoService) VerifyBlock(chainID common.ChainID, seqNum uin
 	// ok is true if it was the policy requested, or false if it is the default policy
 	mcsLogger.Debugf("Got block validation policy for channel [%s] with flag [%t]", channelID, ok)
 
+	shdrs, err := metadata.UnmarshalAllSignatureHeaders()
+	if err != nil {
+		return fmt.Errorf("Failed unmarshalling signature header for block with id [%d] on channel [%s]: [%s]", block.Header.Number, chainID, err)
+	}
 	// - Prepare SignedData
 	signatureSet := []*pcommon.SignedData{}
-	for _, metadataSignature := range metadata.Signatures {
-		shdr, err := utils.GetSignatureHeader(metadataSignature.SignatureHeader)
-		if err != nil {
-			return fmt.Errorf("Failed unmarshalling signature header for block with id [%d] on channel [%s]: [%s]", block.Header.Number, chainID, err)
-		}
+	for i, metadataSignature := range metadata.Signatures {
 		signatureSet = append(
 			signatureSet,
 			&pcommon.SignedData{
-				Identity:  shdr.Creator,
+				Identity:  shdrs[i].Creator,
 				Data:      util.ConcatenateBytes(metadata.Value, metadataSignature.SignatureHeader, block.Header.Bytes()),
 				Signature: metadataSignature.Signature,
 			},

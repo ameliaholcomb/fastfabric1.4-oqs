@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package blocksprovider
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"github.com/hyperledger/fabric/fastfabric/config"
 	"github.com/hyperledger/fabric/fastfabric/gossip"
 	"math"
@@ -37,7 +38,7 @@ type GossipServiceAdapter interface {
 	PeersOfChannel(gossipcommon.ChainID) []discovery.NetworkMember
 
 	// AddPayload adds payload to the local state sync buffer
-	AddPayload(chainID string, payload *gossip_proto.Payload) error
+	AddPayload(chainID string, payload *cached.GossipPayload) error
 
 	// Gossip the message across the peers
 	Gossip(msg *gossip_proto.GossipMessage)
@@ -160,20 +161,21 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 		case *orderer.DeliverResponse_Block:
 			errorStatusCounter = 0
 			statusCounter = 0
-			blockNum := t.Block.Header.Number
+			block := cached.WrapBlock(t.Block)
+			blockNum := block.Header.Number
 			if blockNum > 1 && (config.IsEndorser || config.IsStorage) {
 				continue
 			}
 			logger.Infof("received block [%d]", blockNum)
 
-			if err := b.mcs.VerifyBlock(gossipcommon.ChainID(b.chainID), blockNum, t.Block); err != nil {
+			if err := b.mcs.VerifyBlock(gossipcommon.ChainID(b.chainID), blockNum, block); err != nil {
 				logger.Errorf("[%s] Error verifying block with sequnce number %d, due to %s", b.chainID, blockNum, err)
 				continue
 			}
 
 			numberOfPeers := len(b.gossip.PeersOfChannel(gossipcommon.ChainID(b.chainID)))
 			// Create payload with a block received
-			payload := createPayload(t.Block)
+			payload := createPayload(block)
 
 			logger.Debugf("[%s] Adding payload to local buffer, blockNum = [%d]", b.chainID, blockNum)
 			// Add payload to local state payloads buffer
@@ -255,8 +257,8 @@ func createGossipMsg(chainID string, payload *gossip_proto.Payload) *gossip_prot
 	return gossipMsg
 }
 
-func createPayload(block *common.Block) *gossip_proto.Payload {
-	return &gossip_proto.Payload{
+func createPayload(block *cached.Block) *cached.GossipPayload {
+	return &cached.GossipPayload{
 		Data: block,
 	}
 }

@@ -32,7 +32,7 @@ import (
 // capable to full fill missing blocks by running state replication and
 // sending request to get missing block to other nodes
 type GossipStateProvider interface {
-	AddPayload(payload *proto.Payload) error
+	AddPayload(payload *cached.GossipPayload) error
 
 	// Stop terminates state transfer object
 	Stop()
@@ -92,7 +92,7 @@ type MCSAdapter interface {
 	// VerifyBlock returns nil if the block is properly signed, and the claimed seqNum is the
 	// sequence number that the block's header contains.
 	// else returns error
-	VerifyBlock(chainID common2.ChainID, seqNum uint64, signedBlock *common.Block) error
+	VerifyBlock(chainID common2.ChainID, seqNum uint64, signedBlock *cached.Block) error
 
 	// VerifyByChannel checks that signature is a valid signature of message
 	// under a peer's verification key, but also in the context of a specific channel.
@@ -505,8 +505,9 @@ func (s *GossipStateProviderImpl) handleStateResponse(msg proto.ReceivedMessage)
 	for _, payload := range response.GetPayloads() {
 		seqNum := payload.Data.Header.Number
 		logger.Debugf("Received payload with sequence number %d.", seqNum)
+		block := cached.WrapBlock(payload.Data)
 		if !(config.IsEndorser || config.IsStorage) {
-			if err := s.mediator.VerifyBlock(common2.ChainID(s.chainID), seqNum, payload.Data); err != nil {
+			if err := s.mediator.VerifyBlock(common2.ChainID(s.chainID), seqNum, block); err != nil {
 				err = errors.WithStack(err)
 				logger.Warningf("Error verifying block with sequence number %d, due to %+v", seqNum, err)
 				return uint64(0), err
@@ -516,7 +517,7 @@ func (s *GossipStateProviderImpl) handleStateResponse(msg proto.ReceivedMessage)
 			max = seqNum
 		}
 
-		err := s.addPayload(payload, Blocking)
+		err := s.addPayload(&cached.GossipPayload{Data: block, PrivateData: payload.PrivateData}, Blocking)
 		if err != nil {
 			logger.Warningf("Block [%d] received from block transfer wasn't added to payload buffer: %v", seqNum, err)
 		}
@@ -550,7 +551,11 @@ func (s *GossipStateProviderImpl) queueNewMessage(msg *proto.GossipMessage) {
 
 	dataMsg := msg.GetDataMsg()
 	if dataMsg != nil {
-		if err := s.addPayload(dataMsg.GetPayload(), NonBlocking); err != nil {
+		plRaw := dataMsg.GetPayload()
+		if err := s.addPayload(&cached.GossipPayload{
+			Data:        cached.WrapBlock(plRaw.Data),
+			PrivateData: plRaw.PrivateData,
+		}, NonBlocking); err != nil {
 			logger.Warningf("Block [%d] received from gossip wasn't added to payload buffer: %v", dataMsg.Payload.Data.Header.Number, err)
 			return
 		}
@@ -570,19 +575,19 @@ func (s *GossipStateProviderImpl) deliverPayloads() {
 			logger.Debugf("[%s] Ready to transfer payloads (blocks) to the ledger, next block number is = [%d]", s.chainID, s.payloads.Next())
 			// Collect all subsequent payloads
 			for payload := s.payloads.Pop(); payload != nil; payload = s.payloads.Pop() {
-				rawBlock := payload.Data
-				logger.Debugf("[%s] Transferring block [%d] with %d transaction(s) to the ledger", s.chainID, rawBlock.Header.Number, len(rawBlock.Data.Data))
+				block := payload.Data
+				logger.Debugf("[%s] Transferring block [%d] with %d transaction(s) to the ledger", s.chainID, block.Header.Number, len(block.Data.Data))
 
 				// Read all private data into slice
 				var p util.PvtDataCollections
 				if payload.PrivateData != nil {
 					err := p.Unmarshal(payload.PrivateData)
 					if err != nil {
-						logger.Errorf("Wasn't able to unmarshal private data for block seqNum = %d due to (%+v)...dropping block", rawBlock.Header.Number, errors.WithStack(err))
+						logger.Errorf("Wasn't able to unmarshal private data for block seqNum = %d due to (%+v)...dropping block", block.Header.Number, errors.WithStack(err))
 						continue
 					}
 				}
-				if err := s.commitBlock(cached.WrapBlock(rawBlock), p); err != nil {
+				if err := s.commitBlock(block, p); err != nil {
 					if executionErr, isExecutionErr := err.(*vsccErrors.VSCCExecutionFailureError); isExecutionErr {
 						logger.Errorf("Failed executing VSCC due to %v. Aborting chain processing", executionErr)
 						return
@@ -758,7 +763,7 @@ func (s *GossipStateProviderImpl) hasRequiredHeight(height uint64) func(peer dis
 }
 
 // AddPayload adds new payload into state.
-func (s *GossipStateProviderImpl) AddPayload(payload *proto.Payload) error {
+func (s *GossipStateProviderImpl) AddPayload(payload *cached.GossipPayload) error {
 	return s.addPayload(payload, s.config.BlockingMode)
 }
 
@@ -766,7 +771,7 @@ func (s *GossipStateProviderImpl) AddPayload(payload *proto.Payload) error {
 // given parameter. If it gets a block while in blocking mode - it would wait until
 // the block is sent into the payloads buffer.
 // Else - it may drop the block, if the payload buffer is too full.
-func (s *GossipStateProviderImpl) addPayload(payload *proto.Payload, blockingMode bool) error {
+func (s *GossipStateProviderImpl) addPayload(payload *cached.GossipPayload, blockingMode bool) error {
 	if payload == nil {
 		return errors.New("Given payload is nil")
 	}

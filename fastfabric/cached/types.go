@@ -79,3 +79,8 @@ type Header struct {
 	cachedChanHeader *ChannelHeader
 	cachedSigHeader  *common.SignatureHeader
 }
+
+type GossipPayload struct {
+	Data        *Block `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	PrivateData [][]byte
+}

@@ -7,12 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package state
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"sync"
 	"sync/atomic"
 
 	"github.com/hyperledger/fabric/common/metrics"
 	"github.com/hyperledger/fabric/gossip/util"
-	proto "github.com/hyperledger/fabric/protos/gossip"
 )
 
 // PayloadsBuffer is used to store payloads into which used to
@@ -21,13 +21,13 @@ import (
 // to signal whenever expected block has arrived.
 type PayloadsBuffer interface {
 	// Adds new block into the buffer
-	Push(payload *proto.Payload)
+	Push(payload *cached.GossipPayload)
 
 	// Returns next expected sequence number
 	Next() uint64
 
 	// Remove and return payload with given sequence number
-	Pop() *proto.Payload
+	Pop() *cached.GossipPayload
 
 	// Get current buffer size
 	Size() int
@@ -44,7 +44,7 @@ type PayloadsBuffer interface {
 type PayloadsBufferImpl struct {
 	next uint64
 
-	buf map[uint64]*proto.Payload
+	buf map[uint64]*cached.GossipPayload
 
 	readyChan chan struct{}
 
@@ -56,7 +56,7 @@ type PayloadsBufferImpl struct {
 // NewPayloadsBuffer is factory function to create new payloads buffer
 func NewPayloadsBuffer(next uint64) PayloadsBuffer {
 	return &PayloadsBufferImpl{
-		buf:       make(map[uint64]*proto.Payload),
+		buf:       make(map[uint64]*cached.GossipPayload),
 		readyChan: make(chan struct{}, 1),
 		next:      next,
 		logger:    util.GetLogger(util.StateLogger, ""),
@@ -74,7 +74,7 @@ func (b *PayloadsBufferImpl) Ready() chan struct{} {
 // sequence number is below the expected next block number payload will be
 // thrown away.
 // TODO return bool to indicate if payload was added or not, so that caller can log result.
-func (b *PayloadsBufferImpl) Push(payload *proto.Payload) {
+func (b *PayloadsBufferImpl) Push(payload *cached.GossipPayload) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
@@ -101,7 +101,7 @@ func (b *PayloadsBufferImpl) Next() uint64 {
 
 // Pop function extracts the payload according to the next expected block
 // number, if no next block arrived yet, function returns nil.
-func (b *PayloadsBufferImpl) Pop() *proto.Payload {
+func (b *PayloadsBufferImpl) Pop() *cached.GossipPayload {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
@@ -153,12 +153,12 @@ type metricsBuffer struct {
 	chainID     string
 }
 
-func (mb *metricsBuffer) Push(payload *proto.Payload) {
+func (mb *metricsBuffer) Push(payload *cached.GossipPayload) {
 	mb.PayloadsBuffer.Push(payload)
 	mb.reportSize()
 }
 
-func (mb *metricsBuffer) Pop() *proto.Payload {
+func (mb *metricsBuffer) Pop() *cached.GossipPayload {
 	pl := mb.PayloadsBuffer.Pop()
 	mb.reportSize()
 	return pl
