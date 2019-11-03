@@ -252,6 +252,14 @@ func (hdr *Header) UnmarshalSignatureHeader() (*common.SignatureHeader, error) {
 	return headerRaw, err
 }
 
+func (hdr *Header) UnmarshalChaincodeHeaderExtension() (*peer.ChaincodeHeaderExtension, error) {
+	chdr, err := hdr.UnmarshalChannelHeader()
+	if err != nil {
+		return nil, err
+	}
+	return chdr.UnmarshalExtension()
+}
+
 func unmarshalSignatureHeader(bytes []byte) (*common.SignatureHeader, error) {
 	headerRaw := &common.SignatureHeader{}
 	if err := proto.Unmarshal(bytes, headerRaw); err != nil {
