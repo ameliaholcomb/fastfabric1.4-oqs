@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -361,7 +362,7 @@ func ConsensusMetadataFromConfigBlock(block *common.Block) (*etcdraft.ConfigMeta
 		return nil, errors.New("nil block")
 	}
 
-	if !utils.IsConfigBlock(block) {
+	if !utils.IsConfigBlock(cached.WrapBlock(block)) {
 		return nil, errors.New("not a config block")
 	}
 

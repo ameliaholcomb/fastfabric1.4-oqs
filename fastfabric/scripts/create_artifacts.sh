@@ -15,12 +15,12 @@ fi
 endorsers=""
 for i in ${ENDORSER_ADDRESS[@]}
 do
-    endorsers="- Hostname: ${i}\n${endorsers}"
+    endorsers="- Hostname: ${i}\n    ${endorsers}"
 done
 
 storage=""
 if [[ ! -z $STORAGE_ADDRESS ]]; then
-    storage="- Hostname: ${STORAGE_ADDRESS}\n${storage}"
+    storage="- Hostname: ${STORAGE_ADDRESS}\n    ${storage}"
 fi
 
 (cat crypto-config.yaml.bak | sed "s/ORDERER_DOMAIN/$ORDERER_DOMAIN/g" | sed "s/ORDERER_ADDRESS/$ORDERER_ADDRESS/g"| sed "s/PEER_DOMAIN/$PEER_DOMAIN/g"| sed "s/FAST_PEER_ADDRESS/$FAST_PEER_ADDRESS/g"| sed "s/ENDORSERS/$endorsers/g"| sed "s/STORAGE/$storage/g") > crypto-config.yaml

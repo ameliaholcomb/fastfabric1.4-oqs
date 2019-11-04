@@ -73,7 +73,7 @@ func NewLedgerCommitterReactive(ledger PeerLedgerSupport, eventer ConfigBlockEve
 // content
 func (lc *LedgerCommitter) preCommit(block *cached.Block) error {
 	// Updating CSCC with new configuration block
-	if utils.IsConfigBlock(block.Block) {
+	if utils.IsConfigBlock(block) {
 		logger.Debug("Received configuration update, calling CSCC ConfigUpdate")
 		if err := lc.eventer(block); err != nil {
 			return errors.WithMessage(err, "could not update CSCC with new configuration update")
