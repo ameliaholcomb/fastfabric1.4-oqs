@@ -357,11 +357,14 @@ func PublicKeyToPEM(publicKey interface{}, pwd []byte) ([]byte, error) {
 		if k == nil {
 			return nil, errors.New("Invalid oqs public key. It must be different from nil.")
 		}
-		// TODO(amelia): Make this real
+		PubASN1, err := oqs.MarshalPKIXPublicKey(k)
+		if err != nil {
+			return nil, err
+		}
 		return pem.EncodeToMemory(
 			&pem.Block{
-				Type: "OQS PUBLIC KEY PLAINTEXT BYTES",
-				Bytes: k.Pk,
+				Type: "OQS PUBLIC KEY",
+				Bytes: PubASN1,
 			},
 		), nil
 	default:
@@ -468,15 +471,6 @@ func PEMtoPublicKey(raw []byte, pwd []byte) (interface{}, error) {
 		return key, err
 	}
 
-	// TODO(amelia): make this real
-	if block.Type == "OQS PUBLIC KEY PLAINTEXT BYTES" {
-		s := oqs.OQSSigInfo{
-				oqs.SigType("abc"),
-				1,
-				2,
-			}
-		return &oqs.PublicKey{block.Bytes, s}, nil
-	}
 	cert, err := DERToPublicKey(block.Bytes)
 	if err != nil {
 		return nil, err
@@ -490,6 +484,10 @@ func DERToPublicKey(raw []byte) (pub interface{}, err error) {
 		return nil, errors.New("Invalid DER. It must be different from nil.")
 	}
 
+	// Try parsing as an OQS key first
+	if key, err := oqs.ParsePKIXPublicKey(raw); err == nil {
+		return key, err
+	}
 	key, err := x509.ParsePKIXPublicKey(raw)
 
 	return key, err
