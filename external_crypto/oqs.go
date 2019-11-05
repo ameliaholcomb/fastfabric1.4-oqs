@@ -219,8 +219,6 @@ type OQSLib struct {
 
 type OQSSigInfo struct {
 	Algorithm SigType
-	PubKeyLen int
-	SecKeyLen int
 }
 
 var packageLib *OQSLib
@@ -246,8 +244,6 @@ func KeyPair() (publicKey PublicKey, secretKey SecretKey, err error) {
 
 	s := OQSSigInfo{
 		Algorithm: SigType(C.GoString(packageSig.sig.method_name)),
-		PubKeyLen: int(pubKeyLen),
-		SecKeyLen: int(secKeyLen),
 	}
 	publicKey = PublicKey { Pk: C.GoBytes(pk, pubKeyLen), Sig: s}
 	secretKey = SecretKey{

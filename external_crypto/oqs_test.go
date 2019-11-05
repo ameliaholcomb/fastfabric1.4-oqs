@@ -65,8 +65,6 @@ func TestRoundTrip(t *testing.T) {
 
 			publicKey, secretKey, err := KeyPair()
 			assert.Equal(t, publicKey.Sig.Algorithm, sigAlg)
-			assert.Equal(t, publicKey.Sig.SecKeyLen, len(secretKey.Sk))
-			assert.Equal(t, publicKey.Sig.PubKeyLen, len(publicKey.Pk))
 			require.NoError(t, err)
 			
 			signature, err := Sign(secretKey, message)

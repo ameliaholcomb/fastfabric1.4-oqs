@@ -12,94 +12,156 @@ import (
 // there will be forthcoming RFCs that precisely describe their expected asn1 format, etc.
 // Eventually, these should be supported by the Go SDK crypto packages directly.
 
-const UnknownPublicKeyAlgorithm SigType = "UnknownPublicKeyAlgorithm"
-type PublicKeyAlgorithm = SigType
+const UnknownKeyAlgorithm SigType = "UnknownKeyAlgorithm"
+type Algorithm = SigType
 var (
-	oidPublicKeyPicnicL1FS     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 43}
-	oidPublicKeyPicnicL1UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 44}
-	oidPublicKeyPicnic2L1FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 45}
-	oidPublicKeyPicnicL3FS     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 46}
-	oidPublicKeyPicnicL3UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 47}
-	oidPublicKeyPicnic2L3FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 48}
-	oidPublicKeyPicnicL5FS     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 49}
-	oidPublicKeyPicnicL5UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 50}
-	oidPublicKeyPicnic2L5FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 51}
-	oidPublicKeyqTESLAI        = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 53}
-	oidPublicKeyqTESLAIIIsize  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 58}
-	oidPublicKeyqTESLAIIIspeed = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 59} // ???
-	oidPublicKeyDilithium_2    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 21}
-	oidPublicKeyDilithium_3    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 22}
-	oidPublicKeyDilithium_4    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 23}
-	oidPublicKeyMqdss_31_48    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 41}
-	oidPublicKeyMqdss_31_64    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 42}
-	oidPublicKeySphincs_haraka_128f_robust = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 100} // Haraka not included?
+	oidPicnicL1FS     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 43}
+	oidPicnicL1UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 44}
+	oidPicnic2L1FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 45}
+	oidPicnicL3FS     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 46}
+	oidPicnicL3UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 47}
+	oidPicnic2L3FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 48}
+	oidPicnicL5FS     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 49}
+	oidPicnicL5UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 50}
+	oidPicnic2L5FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 51}
+	oidqTESLAI        = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 53}
+	oidqTESLAIIIsize  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 58}
+	oidqTESLAIIIspeed = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 59} // ???
+	oidDilithium_2    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 21}
+	oidDilithium_3    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 22}
+	oidDilithium_4    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 23}
+	oidMqdss_31_48    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 41}
+	oidMqdss_31_64    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 42}
+	oidSphincs_haraka_128f_robust = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 100} // Haraka not included?
 )
 
 var oidMap = map[SigType]asn1.ObjectIdentifier {
-	SigPicnicL1FS  : oidPublicKeyPicnicL1FS,
-	SigPicnicL1UR  : oidPublicKeyPicnicL1UR,
-	SigPicnicL3FS  : oidPublicKeyPicnicL3FS,
-	SigPicnicL3UR  : oidPublicKeyPicnicL3UR,
-	SigPicnicL5FS  : oidPublicKeyPicnicL5FS,
-	SigPicnicL5UR  : oidPublicKeyPicnicL5UR,
-	SigPicnic2L1FS  : oidPublicKeyPicnic2L1FS,
-	SigPicnic2L3FS  : oidPublicKeyPicnic2L3FS,
-	SigPicnic2L5FS  : oidPublicKeyPicnic2L5FS,
-	SigqTESLAI  : oidPublicKeyqTESLAI,
-	SigqTESLAIIIsize  : oidPublicKeyqTESLAIIIsize,
-	SigqTESLAIIIspeed  : oidPublicKeyqTESLAIIIspeed,
-	SigDilithium_2  : oidPublicKeyDilithium_2,
-	SigDilithium_3  : oidPublicKeyDilithium_3,
-	SigDilithium_4  : oidPublicKeyDilithium_4,
-	SigMqdss_31_48  : oidPublicKeyMqdss_31_48,
-	SigMqdss_31_64  : oidPublicKeyMqdss_31_64,
-	SigSphincs_haraka_128f_robust  : oidPublicKeySphincs_haraka_128f_robust,
+	SigPicnicL1FS  : oidPicnicL1FS,
+	SigPicnicL1UR  : oidPicnicL1UR,
+	SigPicnicL3FS  : oidPicnicL3FS,
+	SigPicnicL3UR  : oidPicnicL3UR,
+	SigPicnicL5FS  : oidPicnicL5FS,
+	SigPicnicL5UR  : oidPicnicL5UR,
+	SigPicnic2L1FS  : oidPicnic2L1FS,
+	SigPicnic2L3FS  : oidPicnic2L3FS,
+	SigPicnic2L5FS  : oidPicnic2L5FS,
+	SigqTESLAI  : oidqTESLAI,
+	SigqTESLAIIIsize  : oidqTESLAIIIsize,
+	SigqTESLAIIIspeed  : oidqTESLAIIIspeed,
+	SigDilithium_2  : oidDilithium_2,
+	SigDilithium_3  : oidDilithium_3,
+	SigDilithium_4  : oidDilithium_4,
+	SigMqdss_31_48  : oidMqdss_31_48,
+	SigMqdss_31_64  : oidMqdss_31_64,
+	SigSphincs_haraka_128f_robust  : oidSphincs_haraka_128f_robust,
 }
 
-func getPublicKeyAlgorithmFromOID(oid asn1.ObjectIdentifier) PublicKeyAlgorithm {
+func getAlgorithmFromOID(oid asn1.ObjectIdentifier) Algorithm {
 	for alg, id := range oidMap {
 		if oid.Equal(id) {
 			return alg
 		}
 	}
-	return UnknownPublicKeyAlgorithm
+	return UnknownKeyAlgorithm
 }
 
 // pkixPublicKey reflects a PKIX public key structure. See SubjectPublicKeyInfo
 // in RFC 3280.
 type pkixPublicKey struct {
-	Algo      pkix.AlgorithmIdentifier
-	BitString asn1.BitString
+	Algorithm      pkix.AlgorithmIdentifier
+	PublicKey	   asn1.BitString
 }
 
-type publicKeyInfo struct {
+// asn1.Unmarshal will unmarshal into a data structure like pkixPublicKey, but with RawContent
+type pkixPublicKeyUnpack struct {
 	Raw       asn1.RawContent
 	Algorithm pkix.AlgorithmIdentifier
 	PublicKey asn1.BitString
 }
 
-func MarshalPKIXPublicKey(pub interface{}) ([]byte, error)  {
-	var publicKeyBytes []byte
-	var publicKeyAlgorithm pkix.AlgorithmIdentifier
+func getAlgorithmIdentifier(alg SigType) (ai pkix.AlgorithmIdentifier, err error) {
+	oid, ok := oidMap[alg]
+	if !ok {
+		return ai, errors.New("unknown OQS algorithm name")
+	}
+	ai.Algorithm = oid
+	// The OQS public key algorithms do not require parameters,
+	// therefore a NULL parameters value is required.
+	ai.Parameters = asn1.NullRawValue
+	return ai, nil
+}
 
+func MarshalPKIXPublicKey(pub interface{}) ([]byte, error)  {
 	pk, ok := pub.(*PublicKey)
 	if !ok {
 		return nil, errors.New("key is not a known OQS key type")
 	}
-	oid, ok := oidMap[pk.Sig.Algorithm]
-	if !ok {
-		return nil, errors.New("unknown OQS algorithm name")
+
+	publicKeyAlgorithm, err := getAlgorithmIdentifier(pk.Sig.Algorithm)
+	if err != nil {
+		return nil, err
 	}
-	publicKeyAlgorithm.Algorithm = oid
-	// The OQS public key algorithms do not require parameters,
-	// therefore a NULL parameters value is required.
-	publicKeyAlgorithm.Parameters = asn1.NullRawValue
-	publicKeyBytes = pk.Pk
 	pkix := pkixPublicKey{
-		Algo: publicKeyAlgorithm,
-		BitString: asn1.BitString{
-			Bytes:     publicKeyBytes,
-			BitLength: 8 * len(publicKeyBytes),
+		Algorithm: publicKeyAlgorithm,
+		PublicKey: asn1.BitString{
+			Bytes:     pk.Pk,
+			BitLength: 8 * len(pk.Pk),
+		},
+	}
+	ret, _ := asn1.Marshal(pkix)
+	return ret, nil
+}
+
+func ParsePKIXPublicKey(derBytes []byte) (interface{}, error) {
+	var pku pkixPublicKeyUnpack
+	if rest, err := asn1.Unmarshal(derBytes, &pku); err != nil {
+		return nil, err
+	} else if len(rest) != 0 {
+		return nil, errors.New("x509: trailing data after ASN.1 of public-key")
+	}
+	alg := getAlgorithmFromOID(pku.Algorithm.Algorithm)
+	if alg == UnknownKeyAlgorithm {
+		return nil, errors.New("unknown OQS public key algorithm")
+	}
+	asn1Data := pku.PublicKey.RightAlign()
+	s := OQSSigInfo {
+		Algorithm: alg,
+	}
+	publicKey := &PublicKey { Pk: asn1Data, Sig: s}
+	return publicKey, nil
+}
+
+type pkixPrivateKey struct {
+	Algorithm     pkix.AlgorithmIdentifier
+	PrivateKey    asn1.BitString
+	PublicKey     asn1.BitString
+}
+
+type pkixPrivateKeyUnpack struct {
+	Raw           asn1.RawContent
+	Algorithm     pkix.AlgorithmIdentifier
+	PrivateKey    asn1.BitString
+	PublicKey     asn1.BitString
+}
+
+func MarshalPKIXPrivateKey(pub interface{}) ([]byte, error) {
+	sk, ok := pub.(*SecretKey)
+	if !ok {
+		return nil, errors.New("key is not a known OQS key type")
+	}
+	privateKeyAlgorithm, err := getAlgorithmIdentifier(sk.Sig.Algorithm)
+	if err != nil {
+		return nil, err
+	}
+	pkix := pkixPrivateKey{
+		Algorithm: privateKeyAlgorithm,
+		PrivateKey: asn1.BitString{
+			Bytes:     sk.Sk,
+			BitLength: 8 * len(sk.Sk),
+		},
+		PublicKey: asn1.BitString{
+			Bytes:     sk.Pk,
+			BitLength: 8 * len(sk.Pk),
 		},
 	}
 	ret, _ := asn1.Marshal(pkix)
@@ -107,30 +169,28 @@ func MarshalPKIXPublicKey(pub interface{}) ([]byte, error)  {
 
 }
 
-func ParsePKIXPublicKey(derBytes []byte) (interface{}, error) {
-	var pki publicKeyInfo
-	if rest, err := asn1.Unmarshal(derBytes, &pki); err != nil {
+func ParsePKIXPrivateKey(derBytes []byte) (interface{}, error) {
+	var pku pkixPrivateKeyUnpack
+	if rest, err := asn1.Unmarshal(derBytes, &pku); err != nil {
 		return nil, err
 	} else if len(rest) != 0 {
-		return nil, errors.New("x509: trailing data after ASN.1 of public-key")
+		return nil, errors.New("x509: trailing data after ASN.1 of private-key")
 	}
-	alg := getPublicKeyAlgorithmFromOID(pki.Algorithm.Algorithm)
-	if alg == UnknownPublicKeyAlgorithm {
+	alg := getAlgorithmFromOID(pku.Algorithm.Algorithm)
+	if alg == UnknownKeyAlgorithm {
 		return nil, errors.New("unknown OQS public key algorithm")
 	}
-	asn1Data := pki.PublicKey.RightAlign()
+	asn1PrivData := pku.PrivateKey.RightAlign()
+	asn1PubData := pku.PublicKey.RightAlign()
 	s := OQSSigInfo {
 		Algorithm: alg,
-		// TODO(amelia): either reconstruct this or remove from OQSSigInfo
-		PubKeyLen: 512,
-		SecKeyLen: 512,
 	}
-	publicKey := &PublicKey { Pk: asn1Data, Sig: s}
-	return publicKey, nil
-
-
+	pk := PublicKey{
+		Pk: asn1PubData,
+		Sig: s,
+	}
+	privKey := &SecretKey {asn1PrivData, pk}
+	return privKey, nil
 }
-//func MarshalPKCS1PrivateKey(pub interface{}) ([]byte, error) {}
-//func ParsePKCS1PrivateKey(block []byte) (interface{}, error) {}
 
 

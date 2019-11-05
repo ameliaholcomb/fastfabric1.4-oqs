@@ -79,3 +79,56 @@ func TestParsePKIXPublicKeyError(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unknown OQS public key algorithm")
 }
+
+func TestMarshalPKIXPrivateKeySuccess(t *testing.T) {
+	_, sk, err := KeyPair()
+	require.NoError(t, err)
+	_, err = MarshalPKIXPrivateKey(&sk)
+	require.NoError(t, err)
+}
+
+func TestMarshalPKIXSecretKeyError(t *testing.T) {
+	// An incorrect keytype passed should compile,
+	// but return an error.
+	ecdsaK := ecdsa.PrivateKey{}
+	_, err := MarshalPKIXPrivateKey(&ecdsaK)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not a known OQS key type")
+
+	// A correct keytype with an unknown algorithm
+	// should return an error.
+	_, sk, err := KeyPair()
+	require.NoError(t, err)
+	sk.Sig.Algorithm = "I am not a real OQS Algorithm"
+	_, err = MarshalPKIXPrivateKey(&sk)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown OQS algorithm name")
+}
+
+func TestParsePKIXPrivateKeySuccess(t *testing.T) {
+	_, sk, err := KeyPair()
+	require.NoError(t, err)
+
+	for sigAlg, _ := range(oidMap) {
+		t.Run(string(sigAlg), func(t *testing.T) {
+			// In general, changing the key algorithm results in an invalid key.
+			// However, nothing in the marshalling/unmarshalling should check that Pk is
+			// valid for its algorithm.
+			// Thus, we can test all the algorithms without generating a new keypair
+			// for each by simply changing the SigInfo algorithm name.
+			sk.Sig.Algorithm = sigAlg
+			derBytes, err := MarshalPKIXPrivateKey(&sk)
+			require.NoError(t, err)
+			key, err := ParsePKIXPrivateKey(derBytes)
+			require.NoError(t, err)
+			oqsKey, ok := key.(*SecretKey)
+			require.True(t, ok)
+			require.Equal(t, oqsKey.Sk, sk.Sk)
+			require.Equal(t, oqsKey.Pk, sk.Pk)
+			// require.Equal *can* compare SigType objects, but it gives much more useful error messages
+			// for comparing string types.
+			require.Equal(t, string(oqsKey.Sig.Algorithm), string(sk.Sig.Algorithm))
+		})
+	}
+}
+
