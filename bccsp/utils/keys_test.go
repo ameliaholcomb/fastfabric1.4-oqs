@@ -24,6 +24,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -342,6 +343,32 @@ func TestAESKey(t *testing.T) {
 	k2, err = PEMtoAES(pem, k)
 	assert.NoError(t, err)
 	assert.Equal(t, k, k2)
+}
+
+func TestOQSKeys(t *testing.T) {
+	pk, sk, err := oqs.KeyPair()
+	assert.NoError(t, err)
+
+	pem, err := PublicKeyToPEM(&pk, []byte{})
+	assert.NoError(t, err)
+	pub, err := PEMtoPublicKey(pem, []byte{})
+	assert.NoError(t, err)
+	oqsPub, ok := pub.(*oqs.PublicKey)
+	assert.True(t, ok)
+	assert.Equal(t, oqsPub.Pk, pk.Pk)
+	assert.Equal(t, oqsPub.Sig.Algorithm, pk.Sig.Algorithm)
+
+	pem, err = PrivateKeyToPEM(&sk, []byte{})
+	assert.NoError(t, err)
+	priv, err := PEMtoPrivateKey(pem, []byte{})
+	assert.NoError(t, err)
+	oqsPriv, ok := priv.(*oqs.SecretKey)
+	assert.True(t, ok)
+	assert.Equal(t, oqsPriv.Pk, pk.Pk)
+	assert.Equal(t, oqsPriv.Pk, sk.Pk)
+	assert.Equal(t, oqsPriv.Sk, sk.Sk)
+	assert.Equal(t, oqsPriv.Sig.Algorithm, sk.Sig.Algorithm)
+
 }
 
 func TestDERToPublicKey(t *testing.T) {

@@ -147,16 +147,18 @@ func PrivateKeyToPEM(privateKey interface{}, pwd []byte) ([]byte, error) {
 		if k == nil {
 			return nil, errors.New("Invalid oqs private key. It must be different from nil.")
 		}
-
-		// TODO(amelia): make this real
+		raw, err := oqs.MarshalPKIXPrivateKey(k)
+		if err != nil {
+			return nil, err
+		}
 		return pem.EncodeToMemory(
 			&pem.Block{
-				Type:  "OQS PRIVATE KEY PLAINTEXT BYTES",
-				Bytes: k.Sk,
+				Type:  "OQS PRIVATE KEY",
+				Bytes: raw,
 			},
 		), nil
 	default:
-		return nil, errors.New("Invalid key type. It must be *ecdsa.PrivateKey or *rsa.PrivateKey")
+		return nil, errors.New("Invalid key type. It must be *ecdsa.PrivateKey, *rsa.PrivateKey, or *oqs.PrivateKey")
 	}
 }
 
@@ -215,7 +217,11 @@ func DERToPrivateKey(der []byte) (key interface{}, err error) {
 		return
 	}
 
-	return nil, errors.New("Invalid key type. The DER must contain an rsa.PrivateKey or ecdsa.PrivateKey")
+	if key, err = oqs.ParsePKIXPrivateKey(der); err == nil {
+		return
+	}
+
+	return nil, errors.New("Invalid key type. The DER must contain {rsa|ecdsa|oqs}.PrivateKey")
 }
 
 // PEMtoPrivateKey unmarshals a pem to private key
@@ -245,11 +251,6 @@ func PEMtoPrivateKey(raw []byte, pwd []byte) (interface{}, error) {
 			return nil, err
 		}
 		return key, err
-	}
-	// TODO(amelia): make this real
-	if block.Type == "OQS PRIVATE KEY PLAINTEXT BYTES" {
-		// TODO(amelia): Need to encode the public key as well to make this a valid structure?
-		return &oqs.SecretKey{block.Bytes, oqs.PublicKey{}}, nil
 	}
 
 	cert, err := DERToPrivateKey(block.Bytes)
