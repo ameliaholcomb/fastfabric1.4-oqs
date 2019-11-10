@@ -52,7 +52,7 @@ func (k *oqsPublicKey) Bytes() ([]byte, error) {
 	if k.pubKey == nil {
 		return nil, nil
 	}
-	return k.pubKey.Pk, nil
+	return oqs.MarshalPKIXPublicKey(k.pubKey)
 }
 
 // SKI returns the subject key identifier of this key.

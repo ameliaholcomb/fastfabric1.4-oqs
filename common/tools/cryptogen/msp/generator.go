@@ -59,8 +59,14 @@ func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
 	// get keystore path
 	keystore := filepath.Join(mspDir, "keystore")
 
-	// generate private key
-	priv, _, err := csp.GeneratePrivateKey(keystore)
+	// generate quantum-safe private key, which saves it in the Keystore
+	_, _, err = csp.GeneratePrivateKey(keystore, &bccsp.OQSKeyGenOpts{Temporary: false})
+	if err != nil {
+		return err
+	}
+
+	// generate classical crypto private key
+	priv, _, err := csp.GeneratePrivateKey(keystore, &bccsp.ECDSAP256KeyGenOpts{Temporary: false})
 	if err != nil {
 		return err
 	}
@@ -116,7 +122,7 @@ func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
 	*/
 
 	// generate private key
-	tlsPrivKey, _, err := csp.GeneratePrivateKey(tlsDir)
+	tlsPrivKey, _, err := csp.GeneratePrivateKey(tlsDir, &bccsp.ECDSAP256KeyGenOpts{Temporary: false})
 	if err != nil {
 		return err
 	}

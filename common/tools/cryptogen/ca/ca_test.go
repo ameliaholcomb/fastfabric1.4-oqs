@@ -8,6 +8,7 @@ package ca_test
 import (
 	"crypto/ecdsa"
 	"crypto/x509"
+	"github.com/hyperledger/fabric/bccsp"
 	"net"
 	"os"
 	"path/filepath"
@@ -40,7 +41,7 @@ func TestLoadCertificateECDSA(t *testing.T) {
 	caDir := filepath.Join(testDir, "ca")
 	certDir := filepath.Join(testDir, "certs")
 	// generate private key
-	priv, _, err := csp.GeneratePrivateKey(certDir)
+	priv, _, err := csp.GeneratePrivateKey(certDir, &bccsp.ECDSAP256KeyGenOpts{Temporary: false})
 	assert.NoError(t, err, "Failed to generate signed certificate")
 
 	// get EC public key
@@ -106,7 +107,7 @@ func TestGenerateSignCertificate(t *testing.T) {
 	caDir := filepath.Join(testDir, "ca")
 	certDir := filepath.Join(testDir, "certs")
 	// generate private key
-	priv, _, err := csp.GeneratePrivateKey(certDir)
+	priv, _, err := csp.GeneratePrivateKey(certDir, &bccsp.ECDSAP256KeyGenOpts{Temporary: false})
 	assert.NoError(t, err, "Failed to generate signed certificate")
 
 	// get EC public key

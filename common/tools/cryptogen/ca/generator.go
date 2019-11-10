@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"github.com/hyperledger/fabric/bccsp"
 	"io/ioutil"
 	"math/big"
 	"net"
@@ -46,7 +47,7 @@ func NewCA(baseDir, org, name, country, province, locality, orgUnit, streetAddre
 
 	err := os.MkdirAll(baseDir, 0755)
 	if err == nil {
-		priv, signer, err := csp.GeneratePrivateKey(baseDir)
+		priv, signer, err := csp.GeneratePrivateKey(baseDir, &bccsp.ECDSAP256KeyGenOpts{Temporary: false})
 		response = err
 		if err == nil {
 			// get public signing certificate
