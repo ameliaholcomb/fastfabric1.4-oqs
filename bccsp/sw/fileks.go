@@ -140,6 +140,8 @@ func (ks *fileBasedKeyStore) GetKey(ski []byte) (bccsp.Key, error) {
 			return &ecdsaPrivateKey{key.(*ecdsa.PrivateKey)}, nil
 		case *rsa.PrivateKey:
 			return &rsaPrivateKey{key.(*rsa.PrivateKey)}, nil
+		case *oqs.SecretKey:
+			return &oqsPrivateKey{key.(*oqs.SecretKey)}, nil
 		default:
 			return nil, errors.New("Secret key type not recognized")
 		}
