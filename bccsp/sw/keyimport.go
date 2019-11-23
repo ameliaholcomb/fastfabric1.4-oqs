@@ -22,6 +22,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 	"reflect"
 
 	"github.com/hyperledger/fabric/bccsp"
@@ -159,3 +160,29 @@ func (ki *x509PublicKeyImportOptsKeyImporter) KeyImport(raw interface{}, opts bc
 		return nil, errors.New("Certificate's public key type not recognized. Supported keys: [ECDSA, RSA]")
 	}
 }
+
+type oqsPKIXPublicKeyImportOptsKeyImporter struct{}
+
+func (*oqsPKIXPublicKeyImportOptsKeyImporter) KeyImport(raw interface{}, opts bccsp.KeyImportOpts) (bccsp.Key, error) {
+	der, ok := raw.([]byte)
+	if !ok {
+		return nil, errors.New("Invalid raw material. Expected byte array.")
+	}
+
+	if len(der) == 0 {
+		return nil, errors.New("Invalid raw. It must not be nil.")
+	}
+
+	lowLevelKey, err := oqs.ParsePKIXPublicKey(der)
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting PKIX to OQS public key [%s]", err)
+	}
+
+	oqsPK, ok := lowLevelKey.(*oqs.PublicKey)
+	if !ok {
+		return nil, errors.New("Failed casting to OQS public key. Invalid raw material.")
+	}
+
+	return &oqsPublicKey{oqsPK}, nil
+}
+

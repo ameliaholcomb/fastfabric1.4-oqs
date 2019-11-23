@@ -189,6 +189,22 @@ func (opts *OQSKeyGenOpts) Ephemeral() bool {
 	return opts.Temporary
 }
 
+// OQSPublicKeyImportOpts contains options for OQS public key importation in DER format
+type OQSPublicKeyImportOpts struct {
+	Temporary bool
+}
+
+//TODO(amelia): here and above, do we want this algorithm hard-coded?
+// Algorithm returns the key generation algorithm identifier (to be used).
+func (opts *OQSPublicKeyImportOpts) Algorithm() string {
+	return string(oqs.SigqTESLAI)
+}
+
+// Ephemeral returns true if the key to generate has to be ephemeral,
+// false otherwise.
+func (opts *OQSPublicKeyImportOpts) Ephemeral() bool {
+	return opts.Temporary
+}
 // AESKeyGenOpts contains options for AES key generation at default security level
 type AESKeyGenOpts struct {
 	Temporary bool
