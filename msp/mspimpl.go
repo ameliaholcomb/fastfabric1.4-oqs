@@ -13,7 +13,6 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/factory"
@@ -193,8 +192,29 @@ func (msp *bccspmsp) getSigningIdentityFromConf(sidInfo *m.SigningIdentityInfo) 
 		}
 	}
 
+	// If the SigningIdentityInfo also has quantum-safe key information,
+	// extract it to create a hybrid signer.
+	var quantumPrivKey bccsp.Key = nil
+	if sidInfo.QuantumPublicSigner != nil {
+		// Extract the quantum public key of the signer.
+		// TODO(amelia): Refactor into something like getIdentityFromConf?
+		qPem := sidInfo.QuantumPublicSigner
+		keyMaterial, _ := pem.Decode(qPem)
+		if keyMaterial == nil {
+			return nil, errors.New("Unable to decode PEM for quantum public key")
+		}
+		quantumPubKey, err := msp.bccsp.KeyImport(keyMaterial.Bytes, &bccsp.OQSPublicKeyImportOpts{Temporary: true})
+		if err != nil {
+			return nil, fmt.Errorf("Unable to parse quantum public key: [%s]", err)
+		}
+		quantumPrivKey, err = msp.bccsp.GetKey(quantumPubKey.SKI())
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// get the peer signer
-	peerSigner, err := signer.New(msp.bccsp, privKey)
+	peerSigner, err := signer.New(msp.bccsp, privKey, quantumPrivKey)
 	if err != nil {
 		return nil, errors.WithMessage(err, "getIdentityFromBytes error: Failed initializing bccspCryptoSigner")
 	}

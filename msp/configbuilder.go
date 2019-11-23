@@ -180,12 +180,24 @@ func GetLocalMspConfig(dir string, bccspConfig *factory.FactoryOpts, ID string) 
 	}
 
 	/* FIXME: for now we're making the following assumptions
-	1) there is exactly one signing cert
+	1) signing certs are ordered and there are no extra certs in this directory:
+	   should have getPemMaterialFromDir return the content with file names in a hash map, or similar
 	2) BCCSP's KeyStore has the private key that matches SKI of
 	   signing cert
 	*/
 
-	sigid := &msp.SigningIdentityInfo{PublicSigner: signcert[0], PrivateSigner: nil}
+	var sigid *msp.SigningIdentityInfo
+	if len(signcert) == 2 {
+
+		sigid = &msp.SigningIdentityInfo{
+			PublicSigner:         signcert[0],
+			PrivateSigner:        nil,
+			QuantumPublicSigner:  signcert[1],
+			QuantumPrivateSigner: nil,
+		}
+	} else {
+		sigid = &msp.SigningIdentityInfo{PublicSigner: signcert[0], PrivateSigner: nil}
+	}
 
 	return getMspConfig(dir, ID, sigid)
 }

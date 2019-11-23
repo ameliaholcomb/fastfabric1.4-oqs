@@ -262,7 +262,7 @@ func (msp *bccspmsp) setupNodeOUs(config *m.FabricMSPConfig) error {
 	return nil
 }
 
-func (msp *bccspmsp) setupSigningIdentity(conf *m.FabricMSPConfig) error {
+func (msp *bccspmsp) setupSigningIdentity(conf *m.FabricMSPConfig) (err error) {
 	if conf.SigningIdentity != nil {
 		sid, err := msp.getSigningIdentityFromConf(conf.SigningIdentity)
 		if err != nil {

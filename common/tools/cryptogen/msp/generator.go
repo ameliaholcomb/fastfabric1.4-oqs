@@ -59,13 +59,7 @@ func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
 	// get keystore path
 	keystore := filepath.Join(mspDir, "keystore")
 
-	// generate quantum-safe private key, which saves it in the Keystore
-	_, _, err = csp.GeneratePrivateKey(keystore, &bccsp.OQSKeyGenOpts{Temporary: false})
-	if err != nil {
-		return err
-	}
-
-	// generate classical crypto private key
+	// generate classical crypto private key, which saves both public and private key in the Keystore
 	priv, _, err := csp.GeneratePrivateKey(keystore, &bccsp.ECDSAP256KeyGenOpts{Temporary: false})
 	if err != nil {
 		return err
@@ -83,6 +77,24 @@ func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
 	}
 	cert, err := signCA.SignCertificate(filepath.Join(mspDir, "signcerts"),
 		name, ous, nil, ecPubKey, x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	if err != nil {
+		return err
+	}
+
+	// generate quantum-safe private key, which saves both public and private key in the Keystore
+	qPrivKey, _, err := csp.GeneratePrivateKey(keystore, &bccsp.OQSKeyGenOpts{Temporary: false})
+	if err != nil {
+		return err
+	}
+	qPubKey, err := qPrivKey.PublicKey()
+	if err != nil {
+		return err
+	}
+	qPubKeyBytes, err := qPubKey.Bytes()
+	if err != nil {
+		return err
+	}
+	err = pemExport(filepath.Join(mspDir, "signcerts", name+"-qkey.pem"), "PUBLIC KEY", qPubKeyBytes)
 	if err != nil {
 		return err
 	}
@@ -284,3 +296,4 @@ func exportConfig(mspDir, caFile string, enable bool) error {
 
 	return err
 }
+

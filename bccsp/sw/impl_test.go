@@ -983,7 +983,7 @@ func TestKeyImportFromX509ECDSAPublicKey(t *testing.T) {
 		},
 	}
 
-	cryptoSigner, err := signer.New(provider, k)
+	cryptoSigner, err := signer.New(provider, k, nil)
 	if err != nil {
 		t.Fatalf("Failed initializing CyrptoSigner [%s]", err)
 	}
@@ -2019,7 +2019,7 @@ func TestKeyImportFromX509RSAPublicKey(t *testing.T) {
 		},
 	}
 
-	cryptoSigner, err := signer.New(provider, k)
+	cryptoSigner, err := signer.New(provider, k, nil)
 	if err != nil {
 		t.Fatalf("Failed initializing CyrptoSigner [%s]", err)
 	}

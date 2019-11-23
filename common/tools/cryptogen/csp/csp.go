@@ -60,7 +60,7 @@ func LoadPrivateKey(keystorePath string) (bccsp.Key, crypto.Signer, error) {
 				return err
 			}
 
-			s, err = signer.New(csp, priv)
+			s, err = signer.New(csp, priv, nil)
 			if err != nil {
 				return err
 			}
@@ -103,7 +103,7 @@ func GeneratePrivateKey(keystorePath string, keyOpts bccsp.KeyGenOpts) (bccsp.Ke
 		priv, err = csp.KeyGen(keyOpts)
 		if err == nil {
 			// create a crypto.Signer
-			s, err = signer.New(csp, priv)
+			s, err = signer.New(csp, priv, nil)
 		}
 	}
 	return priv, s, err

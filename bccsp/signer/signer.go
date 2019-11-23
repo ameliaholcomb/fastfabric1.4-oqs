@@ -24,50 +24,83 @@ import (
 	"github.com/pkg/errors"
 )
 
+// TODO(amelia): Should there be a hybrid signer and a regular signer?
+// We're already separating out signers in msp code ...
+
 // bccspCryptoSigner is the BCCSP-based implementation of a crypto.Signer
 type bccspCryptoSigner struct {
 	csp bccsp.BCCSP
-	key bccsp.Key
-	pk  interface{}
+	classicalKey bccsp.Key
+	quantumKey bccsp.Key
+	// TODO(amelia): Should this be an interface?
+	classicalPk interface{}
+	quantumPk interface{}
 }
 
 // New returns a new BCCSP-based crypto.Signer
 // for the given BCCSP instance and key.
-func New(csp bccsp.BCCSP, key bccsp.Key) (crypto.Signer, error) {
+func New(csp bccsp.BCCSP, classicalKey bccsp.Key, quantumKey bccsp.Key) (crypto.Signer, error) {
 	// Validate arguments
 	if csp == nil {
 		return nil, errors.New("bccsp instance must be different from nil.")
 	}
-	if key == nil {
-		return nil, errors.New("key must be different from nil.")
+	if classicalKey == nil {
+		return nil, errors.New("classical key must be different from nil.")
 	}
-	if key.Symmetric() {
+	if classicalKey.Symmetric() || (quantumKey != nil && quantumKey.Symmetric()) {
 		return nil, errors.New("key must be asymmetric.")
 	}
 
-	// Marshall the bccsp public key as a crypto.PublicKey
-	pub, err := key.PublicKey()
+	// Marshall the classical public key as a crypto.PublicKey
+	classicalPub, err := classicalKey.PublicKey()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed getting public key")
+		return nil, errors.Wrap(err, "failed getting classical public key")
 	}
-
-	raw, err := pub.Bytes()
+	classicalRaw, err := classicalPub.Bytes()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed marshalling public key")
 	}
-
-	pk, err := utils.DERToPublicKey(raw)
+	classicalPk, err := utils.DERToPublicKey(classicalRaw)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed marshalling der to public key")
 	}
 
-	return &bccspCryptoSigner{csp, key, pk}, nil
+	// Marshall the quantum public key as a crypto.PublicKey
+	if quantumKey != nil {
+		quantumPub, err := quantumKey.PublicKey()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed getting quantum public key")
+		}
+		quantumRaw, err := quantumPub.Bytes()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed marshalling public key")
+		}
+		quantumPk, err := utils.DERToPublicKey(quantumRaw)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed marshalling der to public key")
+		}
+		return &bccspCryptoSigner{
+			csp,
+			classicalKey,
+			quantumKey,
+			classicalPk,
+			quantumPk,
+		}, nil
+	}
+	return &bccspCryptoSigner{
+		csp,
+		classicalKey,
+		nil,
+		classicalPk,
+		nil,
+	}, nil
 }
 
 // Public returns the public key corresponding to the opaque,
 // private key.
+// TODO(amelia): Make sure no one is actually trying to use this and failing
 func (s *bccspCryptoSigner) Public() crypto.PublicKey {
-	return s.pk
+	return s.classicalPk
 }
 
 // Sign signs digest with the private key, possibly using entropy from
@@ -84,5 +117,13 @@ func (s *bccspCryptoSigner) Public() crypto.PublicKey {
 // the caller is responsible for hashing the larger message and passing
 // the hash (as digest) and the hash function (as opts) to Sign.
 func (s *bccspCryptoSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	return s.csp.Sign(s.key, digest, opts)
+	digest, err := s.csp.Sign(s.classicalKey, digest, opts)
+	if err != nil {
+		return nil, err
+	}
+	if s.quantumKey != nil {
+		return s.csp.Sign(s.quantumKey, digest, opts)
+	} else {
+		return digest, err
+	}
 }
