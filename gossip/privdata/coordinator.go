@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/hyperledger/fabric/fastfabric/cached"
 	"github.com/hyperledger/fabric/fastfabric/config"
+	"github.com/hyperledger/fabric/fastfabric/stopwatch"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -242,7 +243,9 @@ func (c *coordinator) StoreBlock(block *cached.Block, privateDataSets util.PvtDa
 
 	// commit block and private data
 	commitStart := time.Now()
-	err = c.CommitWithPvtData(blockAndPvtData)
+	errChan := c.CommitWithPvtData(blockAndPvtData)
+	err = <-errChan
+	stopwatch.Now("commit_benchmark")
 	c.reportCommitDuration(time.Since(commitStart))
 	if err != nil {
 		return errors.Wrap(err, "commit failed")

@@ -112,8 +112,6 @@ func (s *MSPMessageCryptoService) VerifyBlock(chainID common.ChainID, seqNum uin
 		return fmt.Errorf("Invalid Block on channel [%s]. Header must be different from nil.", chainID)
 	}
 
-	fmt.Println("Verifying block")
-
 	blockSeqNum := block.Header.Number
 	if seqNum != blockSeqNum {
 		return fmt.Errorf("Claimed seqNum is [%d] but actual seqNum inside block is [%d]", seqNum, blockSeqNum)
@@ -160,17 +158,17 @@ func (s *MSPMessageCryptoService) VerifyBlock(chainID common.ChainID, seqNum uin
 	// ok is true if it was the policy requested, or false if it is the default policy
 	mcsLogger.Debugf("Got block validation policy for channel [%s] with flag [%t]", channelID, ok)
 
-	shdrs, err := metadata.UnmarshalAllSignatureHeaders()
-	if err != nil {
-		return fmt.Errorf("Failed unmarshalling signature header for block with id [%d] on channel [%s]: [%s]", block.Header.Number, chainID, err)
-	}
 	// - Prepare SignedData
 	signatureSet := []*pcommon.SignedData{}
 	for i, metadataSignature := range metadata.Signatures {
+		shdr, err := metadata.UnmarshalSpecificSignatureHeader(i)
+		if err != nil {
+			return fmt.Errorf("Failed unmarshalling signature header for block with id [%d] on channel [%s]: [%s]", block.Header.Number, chainID, err)
+		}
 		signatureSet = append(
 			signatureSet,
 			&pcommon.SignedData{
-				Identity:  shdrs[i].Creator,
+				Identity:  shdr.Creator,
 				Data:      util.ConcatenateBytes(metadata.Value, metadataSignature.SignatureHeader, block.Header.Bytes()),
 				Signature: metadataSignature.Signature,
 			},

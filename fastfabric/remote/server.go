@@ -3,7 +3,6 @@ package remote
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -40,7 +39,6 @@ type server struct {
 }
 
 func (s *server) RegisterBlockStore(ledgerId string, store blkstorage.BlockStore) {
-	fmt.Println("registering block store")
 	s.stores[ledgerId] = store
 }
 

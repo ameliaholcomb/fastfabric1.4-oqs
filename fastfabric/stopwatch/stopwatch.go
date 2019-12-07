@@ -28,8 +28,11 @@ func MeasureWithComment(label string, comment string, f func()) {
 }
 
 var now *measurement
+var nowLock sync.Mutex
 
 func Now(label string) {
+	nowLock.Lock()
+	defer nowLock.Unlock()
 	if now == nil {
 		now = prepareMeasurement(label)
 		now.Start()

@@ -33,7 +33,7 @@ do
     a="'{\"Args\":[\"init\",\"$index\", \"$count\", \"$3\"]}'"
     echo Instantiating accounts ${index} to $((index + count -1 ))
 
-    echo "peer chaincode invoke -o $(get_correct_orderer_address):7050 -C ${CHANNEL} -n benchmark -c $a" | bash
+    echo "peer chaincode invoke -o $(get_correct_orderer_address):7050 -C ${CHANNEL} -n ${CHAINCODE} -c $a" | bash
     index=$((index + count))
 done
 echo All done!

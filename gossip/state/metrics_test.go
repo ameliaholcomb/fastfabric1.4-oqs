@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package state
 
 import (
+	"github.com/hyperledger/fabric/fastfabric/cached"
 	"sync"
 	"testing"
 
@@ -51,8 +52,8 @@ func TestMetrics(t *testing.T) {
 	defer p.shutdown()
 
 	// add a payload to the payload buffer
-	err := p.s.AddPayload(&proto.Payload{
-		Data: pcomm.NewBlock(100, []byte{}),
+	err := p.s.AddPayload(&cached.GossipPayload{
+		Data: cached.WrapBlock(pcomm.NewBlock(100, []byte{})),
 	})
 	assert.NoError(t, err)
 

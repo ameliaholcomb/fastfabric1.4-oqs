@@ -13,3 +13,4 @@ export ENDORSER_ADDRESS=()      # can define multiple addresses in the form ( "a
 export STORAGE_ADDRESS=""
 
 export CHANNEL=""               # the name of the created channel of the network
+export CHAINCODE=""             # the name of the chaincode used on the channel

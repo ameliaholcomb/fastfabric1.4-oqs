@@ -126,7 +126,7 @@ func (*cryptoServiceMock) GetPKIidOfCert(peerIdentity api.PeerIdentityType) comm
 
 // VerifyBlock returns nil if the block is properly signed,
 // else returns error
-func (*cryptoServiceMock) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock *pcomm.Block) error {
+func (*cryptoServiceMock) VerifyBlock(chainID common.ChainID, seqNum uint64, signedBlock *cached.Block) error {
 	return nil
 }
 
@@ -225,7 +225,7 @@ func (mc *mockCommitter) GetPvtDataByNum(blockNum uint64, filter ledger.PvtNsCol
 	return args.Get(0).([]*ledger.TxPvtData), args.Error(1)
 }
 
-func (mc *mockCommitter) CommitWithPvtData(blockAndPvtData *ledger.BlockAndPvtData) error {
+func (mc *mockCommitter) CommitWithPvtData(blockAndPvtData *ledger.BlockAndPvtData) <-chan error {
 	mc.Lock()
 	m := mc.Mock
 	mc.Unlock()
@@ -513,9 +513,7 @@ func TestAddPayloadLedgerUnavailable(t *testing.T) {
 	mc.Unlock()
 
 	rawblock := pcomm.NewBlock(uint64(1), []byte{})
-	err := p.s.AddPayload(&proto.Payload{
-		Data: rawblock,
-	})
+	err := p.s.AddPayload(&cached.GossipPayload{Data: cached.WrapBlock(rawblock)})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Failed obtaining ledger height")
 	assert.Contains(t, err.Error(), "cannot query ledger")
@@ -611,8 +609,8 @@ func TestOverPopulation(t *testing.T) {
 	// Add some blocks in a sequential manner and make sure it works
 	for i := 1; i <= 4; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
-		assert.NoError(t, p.s.addPayload(&proto.Payload{
-			Data: rawblock,
+		assert.NoError(t, p.s.addPayload(&cached.GossipPayload{
+			Data: cached.WrapBlock(rawblock),
 		}, NonBlocking))
 	}
 
@@ -620,8 +618,8 @@ func TestOverPopulation(t *testing.T) {
 	// Should succeed
 	for i := 10; i <= DefMaxBlockDistance; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
-		assert.NoError(t, p.s.addPayload(&proto.Payload{
-			Data: rawblock,
+		assert.NoError(t, p.s.addPayload(&cached.GossipPayload{
+			Data: cached.WrapBlock(rawblock),
 		}, NonBlocking))
 	}
 
@@ -629,8 +627,8 @@ func TestOverPopulation(t *testing.T) {
 	// Should fail.
 	for i := DefMaxBlockDistance + 1; i <= DefMaxBlockDistance*10; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
-		assert.Error(t, p.s.addPayload(&proto.Payload{
-			Data: rawblock,
+		assert.Error(t, p.s.addPayload(&cached.GossipPayload{
+			Data: cached.WrapBlock(rawblock),
 		}, NonBlocking))
 	}
 
@@ -671,8 +669,8 @@ func TestBlockingEnqueue(t *testing.T) {
 	go func() {
 		for i := 1; i <= numBlocksReceived; i++ {
 			rawblock := pcomm.NewBlock(uint64(i), []byte{})
-			block := &proto.Payload{
-				Data: rawblock,
+			block := &cached.GossipPayload{
+				Data: cached.WrapBlock(rawblock),
 			}
 			p.s.AddPayload(block)
 			time.Sleep(time.Millisecond)
@@ -685,8 +683,8 @@ func TestBlockingEnqueue(t *testing.T) {
 		for i := 1; i <= numBlocksReceived/2; i++ {
 			blockSeq := rand.Intn(numBlocksReceived)
 			rawblock := pcomm.NewBlock(uint64(blockSeq), []byte{})
-			block := &proto.Payload{
-				Data: rawblock,
+			block := &cached.GossipPayload{
+				Data: cached.WrapBlock(rawblock),
 			}
 			p.s.addPayload(block, NonBlocking)
 			time.Sleep(time.Millisecond)
@@ -991,8 +989,8 @@ func TestAccessControl(t *testing.T) {
 	for i := 1; i <= msgCount; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
 		if _, err := pb.Marshal(rawblock); err == nil {
-			payload := &proto.Payload{
-				Data: rawblock,
+			payload := &cached.GossipPayload{
+				Data: cached.WrapBlock(rawblock),
 			}
 			bootstrapSet[0].s.AddPayload(payload)
 		} else {
@@ -1071,8 +1069,8 @@ func TestNewGossipStateProvider_SendingManyMessages(t *testing.T) {
 	for i := 1; i <= msgCount; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
 		if _, err := pb.Marshal(rawblock); err == nil {
-			payload := &proto.Payload{
-				Data: rawblock,
+			payload := &cached.GossipPayload{
+				Data: cached.WrapBlock(rawblock),
 			}
 			bootstrapSet[0].s.AddPayload(payload)
 		} else {
@@ -1199,8 +1197,8 @@ func TestNewGossipStateProvider_BatchingOfStateRequest(t *testing.T) {
 	for i := 1; i <= msgCount; i++ {
 		rawblock := pcomm.NewBlock(uint64(i), []byte{})
 		if _, err := pb.Marshal(rawblock); err == nil {
-			payload := &proto.Payload{
-				Data: rawblock,
+			payload := &cached.GossipPayload{
+				Data: cached.WrapBlock(rawblock),
 			}
 			bootPeer.s.AddPayload(payload)
 		} else {

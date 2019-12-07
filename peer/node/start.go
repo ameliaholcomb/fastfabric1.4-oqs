@@ -105,6 +105,7 @@ const (
 var chaincodeDevMode bool
 var benchmarkOutput string
 var cpuprofile string
+var storageAddress string
 
 func startCmd() *cobra.Command {
 	// Set the flags on the node start command.
@@ -112,7 +113,7 @@ func startCmd() *cobra.Command {
 	flags.BoolVarP(&chaincodeDevMode, "peer-chaincodedev", "", false,
 		"Whether peer in chaincode development mode")
 	flags.BoolVarP(&ffconfig.IsStorage, "isStorage", "s", false, "Defines if this node is a decoupled storage node")
-	flags.StringVar(&ffconfig.StorageAddress, "storageAddr", "", "The address of the decoupled persistent storage node")
+	flags.StringVar(&storageAddress, "storageAddr", "", "The address of the decoupled persistent storage node")
 	flags.BoolVarP(&ffconfig.IsEndorser, "isEndorser", "e", false, "Defines if this node is a decoupled endorser node")
 	flags.BoolVarP(&ffconfig.IsBenchmark, "isBenchmark", "b", false, "Runs the peer in benchmarking mode. Times between block commits are logged to the file specified with the --output (-o) flag.")
 	flags.StringVarP(&benchmarkOutput, "output", "o", "benchmark.log", "Specifies the benchmark out put location.")
@@ -141,7 +142,9 @@ func serve(args []string) error {
 		if err != nil {
 			panic(err)
 		}
+		fmt.Println("Creating benchmarking log")
 		stopwatch.SetOutput("commit_benchmark", f)
+		defer stopwatch.Flush()
 		logger.Info("Running in benchmarking mode")
 	}
 
@@ -151,12 +154,19 @@ func serve(args []string) error {
 
 	if ffconfig.IsStorage {
 		logger.Info("starting as storage server")
-		remote.StartServer(ffconfig.StorageAddress)
+		remote.StartServer(storageAddress)
 	}
 
-	if !ffconfig.IsStorage && ffconfig.StorageAddress != "" {
-		if err := remote.StartStoragePeerClient(ffconfig.StorageAddress); err != nil {
+	if !ffconfig.IsStorage && storageAddress != "" {
+		if err := remote.StartStoragePeerClient(storageAddress); err != nil {
 			panic(err)
+		}
+	}
+
+	//there is no storage peer defined
+	if !ffconfig.IsStorage && storageAddress == "" {
+		ffconfig.IsStorage = true
+		ffconfig.RegisterBlockStore = func(ledgerId string, blockStore interface{}) {
 		}
 	}
 
@@ -165,6 +175,7 @@ func serve(args []string) error {
 		if err != nil {
 			log.Fatal(err)
 		}
+		fmt.Println("Creating a profile")
 		if err := pprof.StartCPUProfile(f); err != nil {
 			panic(err)
 		}

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-source custom_parameters.sh
+export FABRIC_ROOT=$GOPATH/src/github.com/hyperledger/fabric
+export FABRIC_CFG_PATH=${FABRIC_ROOT}/fastfabric/scripts #change this if you want to copy the script folder somewhere else before modifying it
+
+
+source $FABRIC_CFG_PATH/custom_parameters.sh
 
 get_correct_address () {
     if [[ $1 != "localhost" ]]
@@ -20,9 +24,9 @@ get_correct_orderer_address(){
     echo $(get_correct_address $ORDERER_ADDRESS ${ORDERER_DOMAIN})
 }
 
-
-export FABRIC_ROOT=$GOPATH/src/github.com/hyperledger/fabric
-export FABRIC_CFG_PATH=${FABRIC_ROOT}/fastfabric/scripts #change this if you want to copy the script folder somewhere else before modifying it
+get_endorsers(){
+    echo ${ENDORSER_ADDRESS[@]}
+}
 
 
 

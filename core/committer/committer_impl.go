@@ -13,6 +13,7 @@ import (
 	"github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protos/utils"
 	"github.com/pkg/errors"
+	"sync"
 )
 
 var logger = flogging.MustGetLogger("committer")
@@ -49,7 +50,18 @@ type PeerLedgerSupport interface {
 // chain information
 type LedgerCommitter struct {
 	PeerLedgerSupport
-	eventer ConfigBlockEventer
+	eventer    ConfigBlockEventer
+	commitLock sync.Mutex
+	blocks     map[uint64]struct {
+		*ledger.BlockAndPvtData
+		e chan error
+	}
+	commitHeight uint64
+	ready        chan struct {
+		*ledger.BlockAndPvtData
+		e chan error
+	}
+	done chan bool
 }
 
 // ConfigBlockEventer callback function proto type to define action
@@ -65,8 +77,24 @@ func NewLedgerCommitter(ledger PeerLedgerSupport) *LedgerCommitter {
 // NewLedgerCommitterReactive is a factory function to create an instance of the committer
 // same as way as NewLedgerCommitter, while also provides an option to specify callback to
 // be called upon new configuration block arrival and commit event
-func NewLedgerCommitterReactive(ledger PeerLedgerSupport, eventer ConfigBlockEventer) *LedgerCommitter {
-	return &LedgerCommitter{PeerLedgerSupport: ledger, eventer: eventer}
+func NewLedgerCommitterReactive(l PeerLedgerSupport, eventer ConfigBlockEventer) *LedgerCommitter {
+	lc := &LedgerCommitter{
+		PeerLedgerSupport: l,
+		eventer:           eventer,
+		commitLock:        sync.Mutex{},
+		blocks: map[uint64]struct {
+			*ledger.BlockAndPvtData
+			e chan error
+		}{},
+		commitHeight: 1,
+		ready: make(chan struct {
+			*ledger.BlockAndPvtData
+			e chan error
+		}, 10000),
+		done: make(chan bool, 1),
+	}
+	go lc.commitWithPvtData()
+	return lc
 }
 
 // preCommit takes care to validate the block and update based on its
@@ -82,20 +110,53 @@ func (lc *LedgerCommitter) preCommit(block *cached.Block) error {
 	return nil
 }
 
+func (lc *LedgerCommitter) Close() {
+	if len(lc.done) == 0 {
+		lc.done <- true
+	}
+	lc.PeerLedgerSupport.Close()
+}
+
 // CommitWithPvtData commits blocks atomically with private data
-func (lc *LedgerCommitter) CommitWithPvtData(blockAndPvtData *ledger.BlockAndPvtData) error {
-	// Do validation and whatever needed before
-	// committing new block
-	if err := lc.preCommit(blockAndPvtData.Block); err != nil {
-		return err
-	}
+func (lc *LedgerCommitter) CommitWithPvtData(blockAndPvtData *ledger.BlockAndPvtData) <-chan error {
+	errChan := make(chan error, 1)
+	lc.commitLock.Lock()
+	defer lc.commitLock.Unlock()
 
-	// Committing new block
-	if err := lc.PeerLedgerSupport.CommitWithPvtData(blockAndPvtData); err != nil {
-		return err
+	lc.blocks[blockAndPvtData.Block.Header.Number] = struct {
+		*ledger.BlockAndPvtData
+		e chan error
+	}{
+		BlockAndPvtData: blockAndPvtData,
+		e:               errChan,
 	}
+	lc.FillQueue()
 
-	return nil
+	return errChan
+}
+
+// CommitWithPvtData commits blocks atomically with private data
+func (lc *LedgerCommitter) commitWithPvtData() {
+	for {
+		select {
+		case <-lc.done:
+			return
+		case data := <-lc.ready:
+			// Do validation and whatever needed before
+			// committing new block
+			if err := lc.preCommit(data.Block); err != nil {
+				data.e <- err
+				continue
+			}
+
+			// Committing new block
+			if err := lc.PeerLedgerSupport.CommitWithPvtData(data.BlockAndPvtData); err != nil {
+				data.e <- err
+				continue
+			}
+			data.e <- nil
+		}
+	}
 }
 
 // GetPvtDataAndBlockByNum retrieves private data and block for given sequence number
@@ -130,4 +191,14 @@ func (lc *LedgerCommitter) GetBlocks(blockSeqs []uint64) []*common.Block {
 	}
 
 	return blocks
+}
+
+func (lc *LedgerCommitter) FillQueue() {
+	data, ok := lc.blocks[lc.commitHeight]
+	for ok {
+		lc.ready <- data
+		delete(lc.blocks, lc.commitHeight)
+		lc.commitHeight += 1
+		data, ok = lc.blocks[lc.commitHeight]
+	}
 }

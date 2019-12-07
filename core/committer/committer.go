@@ -31,7 +31,7 @@ import (
 type Committer interface {
 
 	// CommitWithPvtData block and private data into the ledger
-	CommitWithPvtData(blockAndPvtData *ledger.BlockAndPvtData) error
+	CommitWithPvtData(blockAndPvtData *ledger.BlockAndPvtData) <-chan error
 
 	// GetPvtDataAndBlockByNum retrieves block with private data with given
 	// sequence number

@@ -52,7 +52,7 @@ func (b *Block) UnmarshalAll() error {
 		if err != nil {
 			return err
 		}
-		_, err = chdr.UnmarshalExtension()
+		_, err = chdr.unmarshalExtension()
 		if err != nil {
 			return err
 		}
@@ -125,6 +125,9 @@ func (b *Block) UnmarshalAllMetadata() ([]*Metadata, error) {
 }
 
 func (b *Block) UnmarshalSpecificMetadata(index common.BlockMetadataIndex) (*Metadata, error) {
+	b.metaMtx.Lock()
+	defer b.metaMtx.Unlock()
+
 	if len(b.cachedMetadata) <= int(index) || index < 0 {
 		return nil, fmt.Errorf("index out of range")
 	}
@@ -146,6 +149,8 @@ func (b *Block) UnmarshalSpecificMetadata(index common.BlockMetadataIndex) (*Met
 }
 
 func (meta *Metadata) UnmarshalSpecificSignatureHeader(index int) (*common.SignatureHeader, error) {
+	meta.sigMtx.Lock()
+	defer meta.sigMtx.Unlock()
 	if len(meta.cachedSigHeaders) <= int(index) || index < 0 {
 		return nil, fmt.Errorf("index out of range")
 	}
@@ -182,7 +187,9 @@ func (b *Block) UnmarshalAllEnvelopes() ([]*Envelope, error) {
 	return b.cachedEnvs, nil
 }
 
-func (b Block) UnmarshalSpecificEnvelope(index int) (*Envelope, error) {
+func (b *Block) UnmarshalSpecificEnvelope(index int) (*Envelope, error) {
+	b.envMtx.Lock()
+	defer b.envMtx.Unlock()
 	if b.Data == nil || b.Data.Data == nil {
 		return nil, fmt.Errorf("block data must not be nil")
 	}
@@ -204,6 +211,8 @@ func (b Block) UnmarshalSpecificEnvelope(index int) (*Envelope, error) {
 }
 
 func (env *Envelope) UnmarshalPayload() (*Payload, error) {
+	env.plMtx.Lock()
+	defer env.plMtx.Unlock()
 	if env.cachedPayload != nil {
 		return env.cachedPayload, nil
 	}
@@ -219,6 +228,8 @@ func (env *Envelope) UnmarshalPayload() (*Payload, error) {
 }
 
 func (hdr *Header) UnmarshalChannelHeader() (*ChannelHeader, error) {
+	hdr.chdrMtx.Lock()
+	defer hdr.chdrMtx.Unlock()
 	if hdr.cachedChanHeader != nil {
 		return hdr.cachedChanHeader, nil
 	}
@@ -238,6 +249,8 @@ func (hdr *Header) UnmarshalChannelHeader() (*ChannelHeader, error) {
 }
 
 func (hdr *Header) UnmarshalSignatureHeader() (*common.SignatureHeader, error) {
+	hdr.sigMtx.Lock()
+	defer hdr.sigMtx.Unlock()
 	if hdr.cachedSigHeader != nil {
 		return hdr.cachedSigHeader, nil
 	}
@@ -257,7 +270,7 @@ func (hdr *Header) UnmarshalChaincodeHeaderExtension() (*peer.ChaincodeHeaderExt
 	if err != nil {
 		return nil, err
 	}
-	return chdr.UnmarshalExtension()
+	return chdr.unmarshalExtension()
 }
 
 func unmarshalSignatureHeader(bytes []byte) (*common.SignatureHeader, error) {
@@ -268,7 +281,9 @@ func unmarshalSignatureHeader(bytes []byte) (*common.SignatureHeader, error) {
 	return headerRaw, nil
 }
 
-func (ch *ChannelHeader) UnmarshalExtension() (*peer.ChaincodeHeaderExtension, error) {
+func (ch *ChannelHeader) unmarshalExtension() (*peer.ChaincodeHeaderExtension, error) {
+	ch.extMtx.Lock()
+	defer ch.extMtx.Unlock()
 	if ch.cachedExtension != nil {
 		return ch.cachedExtension, nil
 	}
@@ -282,6 +297,8 @@ func (ch *ChannelHeader) UnmarshalExtension() (*peer.ChaincodeHeaderExtension, e
 }
 
 func (pl *Payload) UnmarshalTransaction() (*Transaction, error) {
+	pl.txMtx.Lock()
+	defer pl.txMtx.Unlock()
 	if pl.cachedEnTx != nil {
 		return pl.cachedEnTx, nil
 	}
@@ -327,6 +344,8 @@ func (tx *Transaction) UnmarshalChaincodeActionPayload() (*ChaincodeActionPayloa
 }
 
 func (act *TransactionAction) UnmarshalSignatureHeader() (*common.SignatureHeader, error) {
+	act.sigMtx.Lock()
+	defer act.sigMtx.Unlock()
 	if act.cachedSigHeader != nil {
 		return act.cachedSigHeader, nil
 	}
@@ -337,6 +356,8 @@ func (act *TransactionAction) UnmarshalSignatureHeader() (*common.SignatureHeade
 }
 
 func (act *TransactionAction) UnmarshalChaincodeActionPayload() (*ChaincodeActionPayload, error) {
+	act.plMtx.Lock()
+	defer act.plMtx.Unlock()
 	if act.cachedActionPayload != nil {
 		return act.cachedActionPayload, nil
 	}
@@ -354,6 +375,8 @@ func (act *TransactionAction) UnmarshalChaincodeActionPayload() (*ChaincodeActio
 }
 
 func (pl *ChaincodeActionPayload) UnmarshalProposalPayload() (*ChaincodeProposalPayload, error) {
+	pl.propMtx.Lock()
+	defer pl.propMtx.Unlock()
 	if pl.cachedPropPayload != nil {
 		return pl.cachedPropPayload, nil
 	}
@@ -368,6 +391,8 @@ func (pl *ChaincodeActionPayload) UnmarshalProposalPayload() (*ChaincodeProposal
 }
 
 func (act *ChaincodeEndorsedAction) UnmarshalProposalResponsePayload() (*ProposalResponsePayload, error) {
+	act.propMtx.Lock()
+	defer act.propMtx.Unlock()
 	if act.cachedRespPayload != nil {
 		return act.cachedRespPayload, nil
 	}
@@ -382,6 +407,8 @@ func (act *ChaincodeEndorsedAction) UnmarshalProposalResponsePayload() (*Proposa
 }
 
 func (respPl *ProposalResponsePayload) UnmarshalChaincodeAction() (*ChaincodeAction, error) {
+	respPl.actMtx.Lock()
+	defer respPl.actMtx.Unlock()
 	if respPl.cachedAction != nil {
 		return respPl.cachedAction, nil
 	}
@@ -396,6 +423,9 @@ func (respPl *ProposalResponsePayload) UnmarshalChaincodeAction() (*ChaincodeAct
 }
 
 func (act *ChaincodeAction) UnmarshalRwSet() (*TxRwSet, error) {
+	act.setMtx.Lock()
+	defer act.setMtx.Unlock()
+
 	if act.cachedRwSet != nil {
 		return act.cachedRwSet, nil
 	}
@@ -410,6 +440,8 @@ func (act *ChaincodeAction) UnmarshalRwSet() (*TxRwSet, error) {
 }
 
 func (act *ChaincodeAction) UnmarshalEvents() (*peer.ChaincodeEvent, error) {
+	act.evMtx.Lock()
+	defer act.evMtx.Unlock()
 	if act.cachedEvents != nil {
 		return act.cachedEvents, nil
 	}
@@ -423,6 +455,8 @@ func (act *ChaincodeAction) UnmarshalEvents() (*peer.ChaincodeEvent, error) {
 }
 
 func (cpp *ChaincodeProposalPayload) UnmarshalInput() (*ChaincodeInvocationSpec, error) {
+	cpp.inMtx.Lock()
+	cpp.inMtx.Unlock()
 	if cpp.cachedInput != nil {
 		return cpp.cachedInput, nil
 	}

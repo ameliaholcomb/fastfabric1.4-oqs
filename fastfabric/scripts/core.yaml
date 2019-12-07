@@ -74,6 +74,9 @@ peer:
 
     # Gossip related configuration
     gossip:
+        #Custom
+        state:
+            blockBufferSize: 1000000
         # Bootstrap set to initialize gossip with.
         # This is a list of other peers that this peer reaches out to at startup.
         # Important: The endpoints here have to be endpoints of peers in the same

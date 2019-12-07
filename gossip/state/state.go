@@ -567,7 +567,6 @@ func (s *GossipStateProviderImpl) queueNewMessage(msg *proto.GossipMessage) {
 
 func (s *GossipStateProviderImpl) deliverPayloads() {
 	defer s.done.Done()
-
 	for {
 		select {
 		// Wait for notification that next seq has arrived
@@ -587,13 +586,18 @@ func (s *GossipStateProviderImpl) deliverPayloads() {
 						continue
 					}
 				}
-				if err := s.commitBlock(block, p); err != nil {
-					if executionErr, isExecutionErr := err.(*vsccErrors.VSCCExecutionFailureError); isExecutionErr {
-						logger.Errorf("Failed executing VSCC due to %v. Aborting chain processing", executionErr)
-						return
+				go func(block *cached.Block, p util.PvtDataCollections) {
+					if err := s.commitBlock(block, p); err != nil {
+						if executionErr, isExecutionErr := err.(*vsccErrors.VSCCExecutionFailureError); isExecutionErr {
+							logger.Errorf("Failed executing VSCC due to %v. Aborting chain processing", executionErr)
+							s.Stop()
+							return
+						}
+						logger.Panicf("Cannot commit block to the ledger due to %+v", errors.WithStack(err))
+						s.Stop()
 					}
-					logger.Panicf("Cannot commit block to the ledger due to %+v", errors.WithStack(err))
-				}
+				}(block, p)
+
 			}
 		case <-s.stopCh:
 			s.stopCh <- struct{}{}
