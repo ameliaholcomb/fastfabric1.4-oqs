@@ -1,104 +1,43 @@
 
-# Hyperledger Fabric [![join the chat][rocketchat-image]][rocketchat-url]
+# FastFabric
 
-[rocketchat-url]: https://chat.hyperledger.org/channel/fabric
-[rocketchat-image]: https://open.rocket.chat/images/join-chat.svg
 
-[![Build Status](https://jenkins.hyperledger.org/buildStatus/icon?job=fabric-merge-x86_64)](https://jenkins.hyperledger.org/view/fabric/job/fabric-merge-x86_64/)
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/955/badge)](https://bestpractices.coreinfrastructure.org/projects/955)
-[![Go Report Card](https://goreportcard.com/badge/github.com/hyperledger/fabric)](https://goreportcard.com/report/github.com/hyperledger/fabric)
-[![GoDoc](https://godoc.org/github.com/hyperledger/fabric?status.svg)](https://godoc.org/github.com/hyperledger/fabric)
-[![Documentation Status](https://readthedocs.org/projects/hyperledger-fabric/badge/?version=release-1.4)](http://hyperledger-fabric.readthedocs.io/en/release-1.4/?badge=release-1.4)
+**Note:** This is a fork of the Hyperledger Fabric repository (https://github.com/hyperledger/fabric) and contains a more stable implementation of the FastFabric (https://ieeexplore.ieee.org/document/8751452). The original code used for the publication can be found in the `fastfabric` branch.
 
-**Note:** This is a **read-only mirror** of the formal [Gerrit](https://gerrit.hyperledger.org/r/#/admin/projects/fabric) repository,
-where active development is ongoing. Issue tracking is handled in [Jira](https://jira.hyperledger.org/secure/Dashboard.jspa?selectPageId=10104).
+This is a proof of concept and not meant to be used in a production setting. Helper scripts and instructions are included to run Fabric directly from the binaries created by this repository.
 
-This project is an _Active_ Hyperledger project. For more information on the history of this project see the [Fabric wiki page](https://wiki.hyperledger.org/display/fabric). Information on what _Active_ entails can be found in
-the [Hyperledger Project Lifecycle document](https://wiki.hyperledger.org/display/HYP/Project+Lifecycle).
-Hyperledger Fabric is a platform for distributed ledger solutions, underpinned
-by a modular architecture delivering high degrees of confidentiality,
-resiliency, flexibility and scalability. It is designed to support pluggable
-implementations of different components, and accommodate the complexity and
-intricacies that exist across the economic ecosystem.
 
-Hyperledger Fabric delivers a uniquely elastic and extensible architecture,
-distinguishing it from alternative blockchain solutions. Planning for the
-future of enterprise blockchain requires building on top of a fully-vetted,
-open source architecture; Hyperledger Fabric is your starting point.
+## Prerequisites
 
-## Releases
+- The Hyperledger Fabric prerequisites are installed
+- `$GOPATH` and `$GOPATH/bin` are added to `$PATH`
+- The instructions assume that the repository is cloned to `$GOPATH/src/github.com/hyperledger/fabric`
+- Add the `cryptogen`and `configtxgen` binaries to a new `$GOPATH/src/github.com/hyperledger/fabric/fastfabric/scripts/bin` folder
 
-- [v1.4.1 - April 11, 2019](https://github.com/hyperledger/fabric/releases/tag/v1.4.1)
-- [v1.4.1-rc1 - March 29, 2019](https://github.com/hyperledger/fabric/releases/tag/v1.4.1-rc1)
-- [v1.4.0 - January 9, 2019](https://github.com/hyperledger/fabric/releases/tag/v1.4.0)
-- [v1.4.0-rc2 - December 20, 2018](https://github.com/hyperledger/fabric/releases/tag/v1.4.0-rc2)
-- [v1.4.0-rc1 - December 10, 2018](https://github.com/hyperledger/fabric/releases/tag/v1.4.0-rc1)
-- [v1.3.0 - October 10, 2018](https://github.com/hyperledger/fabric/releases/tag/v1.3.0)
-- [v1.3.0-rc1 - September 24, 2018](https://github.com/hyperledger/fabric/releases/tag/v1.3.0-rc1)
-- [v1.2.0 - July 3, 2018](https://github.com/hyperledger/fabric/releases/tag/v1.2.0)
-- [v1.2.0-rc1 - June 22, 2018](https://github.com/hyperledger/fabric/releases/tag/v1.2.0-rc1)
-- [v1.1.0 - March 15, 2018](https://github.com/hyperledger/fabric/releases/tag/v1.1.0)
-- [v1.1.0-rc1 - March 1, 2018](https://github.com/hyperledger/fabric/releases/tag/v1.1.0-rc1)
-- [v1.1.0-alpha - January 25, 2018](https://github.com/hyperledger/fabric/releases/tag/v1.1.0-alpha)
-- [v1.0.5 - December 6, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.5)
-- [v1.1.0-preview - November 1, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.1.0-preview)
-- [v1.0.4 - October 31, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.4)
-- [v1.0.3 - October 3, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.3)
-- [v1.0.2 - September 10, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.2)
-- [v1.0.1 - August 10, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.1)
-- [v1.0.0 - July 11, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.0)
-- [v1.0.0-rc1 - June 23, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.0-rc1)
-- [v1.0.0-beta - June 8, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.0-beta)
-- [v1.0.0-alpha2 - May 14, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.0-alpha2)
-- [v1.0.0-alpha - March 16, 2017](https://github.com/hyperledger/fabric/releases/tag/v1.0.0-alpha)
-- [v0.6.1-preview - October 15, 2016](https://github.com/hyperledger/fabric/releases/tag/v0.6.0-preview)
-- [v0.6.0-preview - September 16, 2016](https://github.com/hyperledger/fabric/releases/tag/v0.6.0-preview)
 
-## Release Roadmap
+## Network Setup Instructions
 
-Please visit the [Hyperledger Fabric wiki](https://wiki.hyperledger.org/display/fabric/Hyperledger+Fabric+Roadmap) for our release roadmap. We plan on a quarterly release cadence following the v1.1.0 release, delivering on a scoped set of themes and select features. Unless specified otherwise, all releases will be upgradable from the prior minor release.
+All following steps use scripts from the  `fabric/fastfabric/scripts` folder.
+- Fill in the values for the variables in `custom_parameters.sh` based on the comments in the file.
+- Run `create_artifact.sh` to create the prerequisite files to setup the network, channel and anchor peer.
+- For the following steps it is advised to run them in different terminals or use `tmux`.
+    - Run `run_orderer.sh` on the respective server that should form the ordering service
+    - Run `run_storage.sh` on the server that should persist the blockchain and world state
+    - Run `run_endorser.sh` on any server that should act as a decoupled endorser
+    - Run `run_fastpeer.sh` on the server that should validate incoming blocks
+    - Run `channel_setup.sh` on any server in the network.
+    - Run `chaincode_setup.sh` on any server in the network. If you want to install different chaincode, modify the script accordingly. The command should have the form `./chaincode_setup.sh [lower limit of account index range] [upper limit of account index range] [value per account]`. Example: `./chaincode_setup.sh 0 10 100`
 
-## Documentation, Getting Started and Developer Guides
+This should set up an orderer in solo mode, one or more endorsers, a persistent storage peer and fast validation peer. **Important:** Sometimes it takes a few seconds after `channel_setup.sh` for the peers to properly set up a gossip network and as a result the `chaincode_setup.sh` might fail. In this case wait a short while and try to run it again.
 
-Please visit our
-online documentation for
-information on getting started using and developing with the fabric, SDK and chaincode:
-- [v1.4](http://hyperledger-fabric.readthedocs.io/en/release-1.4/)
-- [v1.3](http://hyperledger-fabric.readthedocs.io/en/release-1.3/)
-- [v1.2](http://hyperledger-fabric.readthedocs.io/en/release-1.2/)
-- [v1.1](http://hyperledger-fabric.readthedocs.io/en/release-1.1/)
-- [v1.0](http://hyperledger-fabric.readthedocs.io/en/release-1.0/)
-- [master branch (development)](http://hyperledger-fabric.readthedocs.io/en/master/)
+For a test you can run `test_chaincode [any endorser server]` to move 10 coins form `account0` to `account1`. Example: `./test_chaincode localhost`
 
-It's recommended for first-time users to begin by going through the Getting Started section of the documentation in order to gain familiarity with the Hyperledger Fabric components and the basic transaction flow.
+To shut down all Fabric nodes run `terminate_benchmark.sh`
 
-## Contributing
+## Fabric Client Instructions
+All following steps use scripts from the  `fabric/fastfabric/scripts/client` folder.
 
-We welcome contributions to the Hyperledger Fabric project in many forms.
-There’s always plenty to do! Check [the documentation on how to contribute to this project](http://hyperledger-fabric.readthedocs.io/en/latest/CONTRIBUTING.html)
-for the full details.
-
-## Testing
-Check [the documentation](testingInfo.rst) for information on the testing structure that the project follows.
-
-## Community
-
-[Hyperledger Community](https://www.hyperledger.org/community)
-
-[Hyperledger mailing lists and archives](http://lists.hyperledger.org/)
-
-[Hyperledger Chat](http://chat.hyperledger.org/channel/fabric)
-
-[Hyperledger Fabric Issue Tracking (JIRA)](https://jira.hyperledger.org/secure/Dashboard.jspa?selectPageId=10104)
-
-[Hyperledger Fabric Wiki](https://wiki.hyperledger.org/display/Fabric)
-
-[Hyperledger Wiki](https://wiki.hyperledger.org/)
-
-[Hyperledger Code of Conduct](https://wiki.hyperledger.org/display/HYP/Hyperledger+Code+of+Conduct)
-
-[Community Calendar](https://wiki.hyperledger.org/display/HYP/Calendar+of+Public+Meetings)
-
-## License <a name="license"></a>
-
-Hyperledger Project source code files are made available under the Apache License, Version 2.0 (Apache-2.0), located in the [LICENSE](LICENSE) file. Hyperledger Project documentation files are made available under the Creative Commons Attribution 4.0 International License (CC-BY-4.0), available at http://creativecommons.org/licenses/by/4.0/.
+- First run `node addToWallet.js` to copy the necessary user credentials from the `crypto-config` folder into the `wallet` folder.
+- Compile either the `invoke.ts` or `invoke2.ts` script to Javascript (change the `include` line in `tsconfig.json`). See https://code.visualstudio.com/docs/typescript/typescript-compiling for help.
+- Depending on your choice modify `run_benchmark.sh` to either run `invoke.ts` or `invoke2.ts`. Run it with the command `.\run_benchmark.sh [lower thread index] [upper thread index exclusive] [total thread count] [endorser addr] [number of touched accounts] [percentage of contentious txs]`. This allows to create multiple client threads on multiple servers (wherever this script is executed), to generate load.
+Example: `./run_benchmark.sh 0 10 50 localhost 20000 70`. This spawns 10 threads on this server (and expects that the script is run on other servers to spawn 40 more threads) and calls an endorser on localhost to endorse the transactions. Because only a fifth of the total threads are spawned by this script, only the first fifth of the accounts are touched, in this case `account0` to `account3999` for a total of 2000 transactions. There is a 70% chance that any generated transaction touches `account0` and `account1` instead of a previously untouched pair to simulate a transaction conflict.  
