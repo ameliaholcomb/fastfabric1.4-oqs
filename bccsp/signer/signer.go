@@ -17,6 +17,7 @@ package signer
 
 import (
 	"crypto"
+	"encoding/asn1"
 	"io"
 
 	"github.com/hyperledger/fabric/bccsp"
@@ -30,11 +31,25 @@ import (
 // bccspCryptoSigner is the BCCSP-based implementation of a crypto.Signer
 type bccspCryptoSigner struct {
 	csp bccsp.BCCSP
+	// private keys
 	classicalKey bccsp.Key
 	quantumKey bccsp.Key
 	// TODO(amelia): Should this be an interface?
 	classicalPk interface{}
 	quantumPk interface{}
+}
+
+// TODO(amelia): Is this a reasonable structure?
+type hybridSignature struct{
+	classicalDigest    asn1.BitString
+	quantumDigest	   asn1.BitString
+}
+// TODO(amelia): move to verification or separate file
+// asn1.Unmarshal will unmarshal into a data structure like hybridSignature, but with RawContent
+type pkixPublicKeyUnpack struct {
+	Raw       asn1.RawContent
+	classicalDigest    asn1.BitString
+	quantumDigest	   asn1.BitString
 }
 
 // New returns a new BCCSP-based crypto.Signer
@@ -117,13 +132,28 @@ func (s *bccspCryptoSigner) Public() crypto.PublicKey {
 // the caller is responsible for hashing the larger message and passing
 // the hash (as digest) and the hash function (as opts) to Sign.
 func (s *bccspCryptoSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	digest, err := s.csp.Sign(s.classicalKey, digest, opts)
+	cDigest, err := s.csp.Sign(s.classicalKey, digest, opts)
 	if err != nil {
 		return nil, err
 	}
 	if s.quantumKey != nil {
-		return s.csp.Sign(s.quantumKey, digest, opts)
+		qDigest, err := s.csp.Sign(s.quantumKey, digest, opts)
+		if err != nil {
+			return nil, err
+		}
+		signature := hybridSignature{
+			classicalDigest: asn1.BitString{
+				Bytes:     cDigest,
+				BitLength: 8 * len(cDigest),
+			},
+			quantumDigest: asn1.BitString{
+				Bytes:     qDigest,
+				BitLength: 8 * len(qDigest),
+			},
+		}
+		ret, _ := asn1.Marshal(signature)
+		return ret, nil
 	} else {
-		return digest, err
+		return cDigest, err
 	}
 }
