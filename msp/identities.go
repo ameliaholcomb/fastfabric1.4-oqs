@@ -31,14 +31,20 @@ type identity struct {
 	// cert contains the x.509 certificate that signs the public key of this instance
 	cert *x509.Certificate
 
-	// this is the public key of this instance
+	// this is the classical public key of this instance
 	pk bccsp.Key
+
+	// this is the quantum-safe public key of this instance
+	// it may be nil; in this case, only classical crypto algorithms will be used
+	// if it is non-nil, then when signing and verifying *signatures*, a hybrid scheme
+	// will be assumed. Note that this does not affect the interpretation of certs.
+	qPk bccsp.Key
 
 	// reference to the MSP that "owns" this identity
 	msp *bccspmsp
 }
 
-func newIdentity(cert *x509.Certificate, pk bccsp.Key, msp *bccspmsp) (Identity, error) {
+func newIdentity(cert *x509.Certificate, pk bccsp.Key, qPk bccsp.Key, msp *bccspmsp) (Identity, error) {
 	if mspIdentityLogger.IsEnabledFor(zapcore.DebugLevel) {
 		mspIdentityLogger.Debugf("Creating identity instance for cert %s", certToPEM(cert))
 	}
@@ -66,7 +72,7 @@ func newIdentity(cert *x509.Certificate, pk bccsp.Key, msp *bccspmsp) (Identity,
 		Mspid: msp.name,
 		Id:    hex.EncodeToString(digest)}
 
-	return &identity{id: id, cert: cert, pk: pk, msp: msp}, nil
+	return &identity{id: id, cert: cert, pk: pk, qPk: qPk, msp: msp}, nil
 }
 
 // ExpiresAt returns the time at which the Identity expires.
@@ -160,6 +166,7 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 		mspIdentityLogger.Debugf("Verify: sig = %s", hex.Dump(sig))
 	}
 
+	// TODO(amelia): If the id has both a quantum and classical key, verify both.
 	valid, err := id.msp.bccsp.Verify(id.pk, sig, digest, nil)
 	if err != nil {
 		return errors.WithMessage(err, "could not determine the validity of the signature")
@@ -170,6 +177,7 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 	return nil
 }
 
+// TODO(amelia): Serialization also includes the quantum-safe key?
 // Serialize returns a byte array representation of this identity
 func (id *identity) Serialize() ([]byte, error) {
 	// mspIdentityLogger.Infof("Serializing identity %s", id.id)
@@ -208,9 +216,9 @@ type signingidentity struct {
 	signer crypto.Signer
 }
 
-func newSigningIdentity(cert *x509.Certificate, pk bccsp.Key, signer crypto.Signer, msp *bccspmsp) (SigningIdentity, error) {
+func newSigningIdentity(cert *x509.Certificate, pk bccsp.Key, qPk bccsp.Key, signer crypto.Signer, msp *bccspmsp) (SigningIdentity, error) {
 	//mspIdentityLogger.Infof("Creating signing identity instance for ID %s", id)
-	mspId, err := newIdentity(cert, pk, msp)
+	mspId, err := newIdentity(cert, pk, qPk, msp)
 	if err != nil {
 		return nil, err
 	}

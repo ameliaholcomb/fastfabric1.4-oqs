@@ -157,7 +157,7 @@ func (msp *bccspmsp) getIdentityFromConf(idBytes []byte) (Identity, bccsp.Key, e
 	// get the public key in the right format
 	certPubK, err := msp.bccsp.KeyImport(cert, &bccsp.X509PublicKeyImportOpts{Temporary: true})
 
-	mspId, err := newIdentity(cert, certPubK, msp)
+	mspId, err := newIdentity(cert, certPubK, nil, msp)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -195,15 +195,16 @@ func (msp *bccspmsp) getSigningIdentityFromConf(sidInfo *m.SigningIdentityInfo) 
 	// If the SigningIdentityInfo also has quantum-safe key information,
 	// extract it to create a hybrid signer.
 	var quantumPrivKey bccsp.Key = nil
+	var quantumPubKey bccsp.Key = nil
 	if sidInfo.QuantumPublicSigner != nil {
 		// Extract the quantum public key of the signer.
-		// TODO(amelia): Refactor into something like getIdentityFromConf?
+		// TODO(amelia): This function is terribly ugly! Please refactor into something like getIdentityFromConf.
 		qPem := sidInfo.QuantumPublicSigner
 		keyMaterial, _ := pem.Decode(qPem)
 		if keyMaterial == nil {
 			return nil, errors.New("Unable to decode PEM for quantum public key")
 		}
-		quantumPubKey, err := msp.bccsp.KeyImport(keyMaterial.Bytes, &bccsp.OQSPublicKeyImportOpts{Temporary: true})
+		quantumPubKey, err = msp.bccsp.KeyImport(keyMaterial.Bytes, &bccsp.OQSPublicKeyImportOpts{Temporary: true})
 		if err != nil {
 			return nil, fmt.Errorf("Unable to parse quantum public key: [%s]", err)
 		}
@@ -219,7 +220,11 @@ func (msp *bccspmsp) getSigningIdentityFromConf(sidInfo *m.SigningIdentityInfo) 
 		return nil, errors.WithMessage(err, "getIdentityFromBytes error: Failed initializing bccspCryptoSigner")
 	}
 
-	return newSigningIdentity(idPub.(*identity).cert, idPub.(*identity).pk, peerSigner, msp)
+	// TODO(amelia): The public key for the identity needs to also have a classical and optional quantum part.
+	// See msp/identities.go: 35
+	// See msp/identities.go: 163
+	// See msp/identities.go: 212
+	return newSigningIdentity(idPub.(*identity).cert, idPub.(*identity).pk, quantumPubKey, peerSigner, msp)
 }
 
 // Setup sets up the internal data structures
@@ -394,7 +399,7 @@ func (msp *bccspmsp) deserializeIdentityInternal(serializedIdentity []byte) (Ide
 		return nil, errors.WithMessage(err, "failed to import certificate's public key")
 	}
 
-	return newIdentity(cert, pub, msp)
+	return newIdentity(cert, pub, nil, msp)
 }
 
 // SatisfiesPrincipal returns null if the identity matches the principal or an error otherwise
