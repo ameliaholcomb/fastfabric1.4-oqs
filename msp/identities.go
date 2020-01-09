@@ -10,6 +10,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
 	"time"
@@ -23,6 +24,12 @@ import (
 )
 
 var mspIdentityLogger = flogging.MustGetLogger("msp.identity")
+
+type hybridSignatureUnpack struct {
+	Raw       asn1.RawContent
+	ClassicalDigest    asn1.BitString
+	QuantumDigest	   asn1.BitString
+}
 
 type identity struct {
 	// id contains the identifier (MSPID and identity identifier) for this instance
@@ -166,7 +173,24 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 		mspIdentityLogger.Debugf("Verify: sig = %s", hex.Dump(sig))
 	}
 
-	// TODO(amelia): If the id has both a quantum and classical key, verify both.
+	if id.qPk != nil {
+		// TODO(amelia): This is a bit ugly. We might consider a verifier, like signer, to handle it better.
+		// If there is a quantum public key, then we interpret the sig bytes as a hybrid signature
+		var hsu hybridSignatureUnpack
+		if rest, err := asn1.Unmarshal(sig, &hsu); err != nil {
+			return err
+		} else if len(rest) != 0 {
+			return errors.New("invalid signature format")
+		}
+		valid, err := id.msp.bccsp.Verify(id.qPk, hsu.QuantumDigest.RightAlign(), digest, nil)
+		if err != nil {
+			return errors.WithMessage(err, "could not determine the validity of the quantum signature")
+		} else if !valid {
+			return errors.New("The quantum signature is invalid")
+		}
+		// If the quantum part of the signature is valid, continue to check the classical part
+		sig = hsu.ClassicalDigest.RightAlign()
+	}
 	valid, err := id.msp.bccsp.Verify(id.pk, sig, digest, nil)
 	if err != nil {
 		return errors.WithMessage(err, "could not determine the validity of the signature")

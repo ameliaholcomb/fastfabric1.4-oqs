@@ -220,10 +220,6 @@ func (msp *bccspmsp) getSigningIdentityFromConf(sidInfo *m.SigningIdentityInfo) 
 		return nil, errors.WithMessage(err, "getIdentityFromBytes error: Failed initializing bccspCryptoSigner")
 	}
 
-	// TODO(amelia): The public key for the identity needs to also have a classical and optional quantum part.
-	// See msp/identities.go: 35
-	// See msp/identities.go: 163
-	// See msp/identities.go: 212
 	return newSigningIdentity(idPub.(*identity).cert, idPub.(*identity).pk, quantumPubKey, peerSigner, msp)
 }
 

@@ -558,6 +558,51 @@ func TestSignAndVerify_longMessage(t *testing.T) {
 	}
 }
 
+func TestSignAndVerifyHybrid(t *testing.T) {
+	id, err := localHybridMsp.GetDefaultSigningIdentity()
+	if err != nil {
+		t.Fatalf("GetSigningIdentity should have succeeded")
+		return
+	}
+
+	//// TODO(amelia): Serialization does not work yet.
+	//serializedID, err := id.Serialize()
+	//if err != nil {
+	//	t.Fatalf("Serialize should have succeeded")
+	//	return
+	//}
+	//
+	//idBack, err := localMsp.DeserializeIdentity(serializedID)
+	//if err != nil {
+	//	t.Fatalf("DeserializeIdentity should have succeeded")
+	//	return
+	//}
+
+	msg := []byte("foo")
+	sig, err := id.Sign(msg)
+	if err != nil {
+		t.Fatalf("Sign should have succeeded")
+		return
+	}
+
+	err = id.Verify(msg, sig)
+	if err != nil {
+		t.Fatalf("The signature should be valid")
+		return
+	}
+
+	//err = idBack.Verify(msg, sig)
+	//if err != nil {
+	//	t.Fatalf("The signature should be valid")
+	//	return
+	//}
+
+	err = id.Verify(msg[1:], sig)
+	assert.Error(t, err)
+	err = id.Verify(msg, sig[1:])
+	assert.Error(t, err)
+}
+
 func TestGetOU(t *testing.T) {
 	id, err := localMsp.GetDefaultSigningIdentity()
 	if err != nil {
@@ -1056,9 +1101,16 @@ func TestIdentityPolicyPrincipalFails(t *testing.T) {
 }
 
 var conf *msp.MSPConfig
+// Note that the default keystore, set for the MSP in newBccspMsp(), can only be initialized once per program. Thus,
+// though multiple MSPs created in test can have different configs, they must all use the same keystore directory,
+// msp/keystore.
+// In the case of hybridMsp, the config is under sampleconfig/hybridmsp/,
+// but the keys have been copied into sampleconfig/msp/keystore. This should only be an issue in test.
+var hybridConf *msp.MSPConfig
 var localMsp MSP
 var localMspV11 MSP
 var localMspV13 MSP
+var localHybridMsp MSP
 
 // Required because deleting the cert or msp options from localMsp causes parallel tests to fail
 var localMspBad MSP
@@ -1068,11 +1120,23 @@ func TestMain(m *testing.M) {
 	var err error
 	mspDir, err := configtest.GetDevMspDir()
 	if err != nil {
-		fmt.Printf("Errog getting DevMspDir: %s", err)
+		fmt.Printf("Error getting DevMspDir: %s", err)
 		os.Exit(-1)
 	}
 
 	conf, err = GetLocalMspConfig(mspDir, nil, "SampleOrg")
+	if err != nil {
+		fmt.Printf("Setup should have succeeded, got err %s instead", err)
+		os.Exit(-1)
+	}
+
+	hybridMspDir, err := configtest.GetDevHybridMspDir()
+	if err != nil {
+		fmt.Printf("Error getting HybridDevMspDir: %s", err)
+		os.Exit(-1)
+	}
+
+	hybridConf, err = GetLocalMspConfig(hybridMspDir, nil, "SampleOrg")
 	if err != nil {
 		fmt.Printf("Setup should have succeeded, got err %s instead", err)
 		os.Exit(-1)
@@ -1102,6 +1166,12 @@ func TestMain(m *testing.M) {
 		os.Exit(-1)
 	}
 
+	localHybridMsp, err = newBccspMsp(MSPv1_0)
+	if err != nil {
+		fmt.Printf("Constructor for msp should have succeeded, got err %s instead", err)
+		os.Exit(-1)
+	}
+
 	err = localMspV11.Setup(conf)
 	if err != nil {
 		fmt.Printf("Setup for V1.1 msp should have succeeded, got err %s instead", err)
@@ -1123,6 +1193,12 @@ func TestMain(m *testing.M) {
 	err = localMspBad.Setup(conf)
 	if err != nil {
 		fmt.Printf("Setup for msp should have succeeded, got err %s instead", err)
+		os.Exit(-1)
+	}
+
+	err = localHybridMsp.Setup(hybridConf)
+	if err != nil {
+		fmt.Printf("Setup for hybrid msp should have succeeded, got err %s instead", err)
 		os.Exit(-1)
 	}
 
