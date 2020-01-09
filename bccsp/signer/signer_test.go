@@ -154,3 +154,4 @@ func TestSign(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, err.Error(), "invalid opts")
 }
+

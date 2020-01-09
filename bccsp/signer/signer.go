@@ -41,15 +41,8 @@ type bccspCryptoSigner struct {
 
 // TODO(amelia): Is this a reasonable structure?
 type hybridSignature struct{
-	classicalDigest    asn1.BitString
-	quantumDigest	   asn1.BitString
-}
-// TODO(amelia): move to verification or separate file
-// asn1.Unmarshal will unmarshal into a data structure like hybridSignature, but with RawContent
-type pkixPublicKeyUnpack struct {
-	Raw       asn1.RawContent
-	classicalDigest    asn1.BitString
-	quantumDigest	   asn1.BitString
+	ClassicalDigest    asn1.BitString
+	QuantumDigest	   asn1.BitString
 }
 
 // New returns a new BCCSP-based crypto.Signer
@@ -142,11 +135,11 @@ func (s *bccspCryptoSigner) Sign(rand io.Reader, digest []byte, opts crypto.Sign
 			return nil, err
 		}
 		signature := hybridSignature{
-			classicalDigest: asn1.BitString{
+			ClassicalDigest: asn1.BitString{
 				Bytes:     cDigest,
 				BitLength: 8 * len(cDigest),
 			},
-			quantumDigest: asn1.BitString{
+			QuantumDigest: asn1.BitString{
 				Bytes:     qDigest,
 				BitLength: 8 * len(qDigest),
 			},
