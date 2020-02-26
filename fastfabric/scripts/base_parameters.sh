@@ -25,7 +25,12 @@ get_correct_orderer_address(){
 }
 
 get_endorsers(){
-    echo ${ENDORSER_ADDRESS[@]}
+    if [[ ${#ENDORSER_ADDRESS[@]} -eq 0 ]]; then
+        endorsers=( FAST_PEER_ADDRESS )
+        echo ${endorsers[@]}
+    else
+        echo ${ENDORSER_ADDRESS[@]}
+    fi
 }
 
 
