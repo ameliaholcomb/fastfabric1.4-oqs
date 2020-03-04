@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 source base_parameters.sh
 
+export CORE_PEER_MSPCONFIGPATH=./crypto-config/peerOrganizations/${PEER_DOMAIN}/users/Admin@${PEER_DOMAIN}/msp
+
 peer=$1
 
 export CORE_PEER_ADDRESS=${peer}:7051
