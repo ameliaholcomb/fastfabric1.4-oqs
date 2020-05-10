@@ -40,9 +40,6 @@ func BasicSolo() *Config {
 		Consensus: &Consensus{
 			Type: "solo",
 		},
-		OrdererCap: &OrdererCapabilities{
-			V2_0: false,
-		},
 		SystemChannel: &SystemChannel{
 			Name:    "systemchannel",
 			Profile: "TwoOrgsOrdererGenesis",
@@ -109,6 +106,15 @@ func BasicEtcdRaft() *Config {
 		Organizations: []string{"Org1", "Org2"},
 	}}
 	config.SystemChannel.Profile = "SampleDevModeEtcdRaft"
+	return config
+}
+
+func MinimalRaft() *Config {
+	config := BasicEtcdRaft()
+	config.Peers[1].Channels = nil
+	config.Peers[2].Channels = nil
+	config.Peers[3].Channels = nil
+	config.Profiles[1].Organizations = []string{"Org1"}
 	return config
 }
 

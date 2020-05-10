@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package txvalidator
 
 import (
-	"github.com/hyperledger/fabric/fastfabric/cached"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -24,7 +23,7 @@ import (
 	"github.com/hyperledger/fabric/core/mocks/validator"
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
-	"github.com/hyperledger/fabric/msp/mgmt/testtools"
+	msptesttools "github.com/hyperledger/fabric/msp/mgmt/testtools"
 	"github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
@@ -276,15 +275,12 @@ func TestTxValidationFailure_InvalidTxid(t *testing.T) {
 	txsFilter := util.NewTxValidationFlagsSetValue(len(block.Data.Data), peer.TxValidationCode_VALID)
 	block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txsFilter
 
-	cachedBlock := cached.WrapBlock(block)
 	// Commit block to the ledger
-	ledger.CommitWithPvtData(&ledger2.BlockAndPvtData{
-		Block: cachedBlock,
-	})
+	ledger.CommitWithPvtData(&ledger2.BlockAndPvtData{Block: block}, &ledger2.CommitOptions{})
 
 	// Validation should invalidate transaction,
 	// because it's already committed
-	tValidator.Validate(cachedBlock)
+	tValidator.Validate(block)
 
 	txsfltr := util.TxValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 	assert.True(t, txsfltr.IsInvalid(0))

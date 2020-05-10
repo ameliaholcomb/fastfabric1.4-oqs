@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric/gossip/util"
 	proto "github.com/hyperledger/fabric/protos/gossip"
 	"github.com/pkg/errors"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 )
 
@@ -88,6 +87,9 @@ func (cs *connectionStore) getConnection(peer *RemotePeer) (*connection, error) 
 	cs.RUnlock()
 
 	createdConnection, err := cs.connFactory.createConnection(endpoint, pkiID)
+	if err == nil {
+		cs.logger.Debugf("Created new connection to %s, %s", endpoint, pkiID)
+	}
 
 	destinationLock.Unlock()
 
@@ -115,6 +117,16 @@ func (cs *connectionStore) getConnection(peer *RemotePeer) (*connection, error) 
 	// no one connected to us AND we failed connecting!
 	if err != nil {
 		return nil, err
+	}
+
+	// At this point we know the latest PKI-ID of the remote peer.
+	// Perhaps we are trying to connect to a peer that changed its PKI-ID.
+	// Ensure that we are not already connected to that PKI-ID,
+	// and if so - close the old connection in order to keep the latest one.
+	// We keep the latest one because the remote peer is going to close
+	// our old connection anyway once it sensed this connection handshake.
+	if conn, exists := cs.pki2Conn[string(createdConnection.pkiID)]; exists {
+		conn.close()
 	}
 
 	// at this point in the code, we created a connection to a remote peer
@@ -205,7 +217,7 @@ func newConnection(cl proto.GossipClient, c *grpc.ClientConn, cs proto.Gossip_Go
 		clientStream: cs,
 		serverStream: ss,
 		stopFlag:     int32(0),
-		stopChan:     make(chan struct{}, 1),
+		stopChan:     make(chan struct{}),
 		recvBuffSize: config.RecvBuffSize,
 	}
 	return connection
@@ -245,7 +257,7 @@ func (conn *connection) close() {
 		return
 	}
 
-	conn.stopChan <- struct{}{}
+	close(conn.stopChan)
 
 	conn.drainOutputBuffer()
 	conn.Lock()
@@ -269,7 +281,7 @@ func (conn *connection) toDie() bool {
 
 func (conn *connection) send(msg *proto.SignedGossipMessage, onErr func(error), shouldBlock blockingBehavior) {
 	if conn.toDie() {
-		conn.logger.Debug("Aborting send() to ", conn.info.Endpoint, "because connection is closing")
+		conn.logger.Debugf("Aborting send() to %s because connection is closing", conn.info.Endpoint)
 		return
 	}
 
@@ -278,37 +290,34 @@ func (conn *connection) send(msg *proto.SignedGossipMessage, onErr func(error), 
 		onErr:    onErr,
 	}
 
-	if len(conn.outBuff) == cap(conn.outBuff) {
-		if conn.logger.IsEnabledFor(zapcore.DebugLevel) {
-			conn.logger.Debug("Buffer to", conn.info.Endpoint, "overflowed, dropping message", msg.String())
+	select {
+	case conn.outBuff <- m:
+		// room in channel, successfully sent message, nothing to do
+	default: // did not send
+		if shouldBlock {
+			conn.outBuff <- m // try again, and wait to send
+		} else {
 			conn.metrics.BufferOverflow.Add(1)
-		}
-		if !shouldBlock {
-			return
+			conn.logger.Debugf("Buffer to %s overflowed, dropping message %s", conn.info.Endpoint, msg)
 		}
 	}
-
-	conn.outBuff <- m
 }
 
 func (conn *connection) serviceConnection() error {
 	errChan := make(chan error, 1)
 	msgChan := make(chan *proto.SignedGossipMessage, conn.recvBuffSize)
-	quit := make(chan struct{})
 	// Call stream.Recv() asynchronously in readFromStream(),
 	// and wait for either the Recv() call to end,
 	// or a signal to close the connection, which exits
 	// the method and makes the Recv() call to fail in the
 	// readFromStream() method
-	go conn.readFromStream(errChan, quit, msgChan)
+	go conn.readFromStream(errChan, msgChan)
 
 	go conn.writeToStream()
 
 	for !conn.toDie() {
 		select {
-		case stop := <-conn.stopChan:
-			conn.logger.Debug("Closing reading from stream")
-			conn.stopChan <- stop
+		case <-conn.stopChan:
 			return nil
 		case err := <-errChan:
 			return err
@@ -334,22 +343,26 @@ func (conn *connection) writeToStream() {
 				return
 			}
 			conn.metrics.SentMessages.Add(1)
-		case stop := <-conn.stopChan:
+		case <-conn.stopChan:
 			conn.logger.Debug("Closing writing to stream")
-			conn.stopChan <- stop
 			return
 		}
 	}
 }
 
 func (conn *connection) drainOutputBuffer() {
-	// Drain the output buffer
-	for len(conn.outBuff) > 0 {
-		<-conn.outBuff
+	// Read from the buffer until it is empty.
+	// There may be multiple concurrent readers.
+	for {
+		select {
+		case <-conn.outBuff:
+		default:
+			return
+		}
 	}
 }
 
-func (conn *connection) readFromStream(errChan chan error, quit chan struct{}, msgChan chan *proto.SignedGossipMessage) {
+func (conn *connection) readFromStream(errChan chan error, msgChan chan *proto.SignedGossipMessage) {
 	for !conn.toDie() {
 		stream := conn.getStream()
 		if stream == nil {
@@ -372,10 +385,12 @@ func (conn *connection) readFromStream(errChan chan error, quit chan struct{}, m
 		if err != nil {
 			errChan <- err
 			conn.logger.Warningf("Got error, aborting: %v", err)
+			return
 		}
 		select {
 		case msgChan <- msg:
-		case <-quit:
+		case <-conn.stopChan:
+			conn.logger.Debug("Closing reading from stream")
 			return
 		}
 	}
@@ -404,4 +419,10 @@ func (conn *connection) getStream() stream {
 type msgSending struct {
 	envelope *proto.Envelope
 	onErr    func(error)
+}
+
+//go:generate mockery -dir . -name MockStream -case underscore -output mocks/
+
+type MockStream interface {
+	proto.Gossip_GossipStreamClient
 }

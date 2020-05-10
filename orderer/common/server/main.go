@@ -98,21 +98,6 @@ func Start(cmd string, conf *localconfig.TopLevel) {
 		logger.Panicf("Failed validating bootstrap block: %v", err)
 	}
 
-	clusterType := isClusterType(bootstrapBlock)
-	signer := localmsp.NewSigner()
-
-	lf, _ := createLedgerFactory(conf)
-
-	clusterDialer := &cluster.PredicateDialer{}
-	clusterClientConfig := initializeClusterClientConfig(conf, clusterType, bootstrapBlock)
-	clusterDialer.SetConfig(clusterClientConfig)
-
-	r := createReplicator(lf, bootstrapBlock, conf, clusterClientConfig.SecOpts, signer)
-	// Only clusters that are equipped with a recent config block can replicate.
-	if clusterType && conf.General.GenesisMethod == "file" {
-		r.replicateIfNeeded(bootstrapBlock)
-	}
-
 	opsSystem := newOperationsSystem(conf.Operations, conf.Metrics)
 	err := opsSystem.Start()
 	if err != nil {
@@ -120,44 +105,91 @@ func Start(cmd string, conf *localconfig.TopLevel) {
 	}
 	defer opsSystem.Stop()
 	metricsProvider := opsSystem.Provider
+
+	lf, _ := createLedgerFactory(conf, metricsProvider)
+	sysChanLastConfigBlock := extractSysChanLastConfig(lf, bootstrapBlock)
+	clusterBootBlock := selectClusterBootBlock(bootstrapBlock, sysChanLastConfigBlock)
+
+	signer := localmsp.NewSigner()
+
 	logObserver := floggingmetrics.NewObserver(metricsProvider)
 	flogging.Global.SetObserver(logObserver)
 
 	serverConfig := initializeServerConfig(conf, metricsProvider)
 	grpcServer := initializeGrpcServer(conf, serverConfig)
-	caSupport := &comm.CASupport{
-		AppRootCAsByChain:     make(map[string][][]byte),
-		OrdererRootCAsByChain: make(map[string][][]byte),
-		ClientRootCAs:         serverConfig.SecOpts.ClientRootCAs,
+	caSupport := &comm.CredentialSupport{
+		AppRootCAsByChain:           make(map[string]comm.CertificateBundle),
+		OrdererRootCAsByChainAndOrg: make(comm.OrgRootCAs),
+		ClientRootCAs:               serverConfig.SecOpts.ClientRootCAs,
 	}
 
+	var r *replicationInitiator
 	clusterServerConfig := serverConfig
-	clusterGRPCServer := grpcServer
+	clusterGRPCServer := grpcServer // by default, cluster shares the same grpc server
+	clusterClientConfig := comm.ClientConfig{SecOpts: &comm.SecureOptions{}, KaOpts: &comm.KeepaliveOptions{}}
+	var clusterDialer *cluster.PredicateDialer
+
+	var reuseGrpcListener bool
+	typ := consensusType(bootstrapBlock)
+	var serversToUpdate []*comm.GRPCServer
+
+	clusterType := isClusterType(clusterBootBlock)
 	if clusterType {
-		clusterServerConfig, clusterGRPCServer = configureClusterListener(conf, serverConfig, grpcServer, ioutil.ReadFile)
+		logger.Infof("Setting up cluster for orderer type %s", typ)
+
+		clusterClientConfig = initializeClusterClientConfig(conf)
+		clusterDialer = &cluster.PredicateDialer{
+			ClientConfig: clusterClientConfig,
+		}
+
+		r = createReplicator(lf, bootstrapBlock, conf, clusterClientConfig.SecOpts, signer)
+		// Only clusters that are equipped with a recent config block can replicate.
+		if conf.General.GenesisMethod == "file" {
+			r.replicateIfNeeded(bootstrapBlock)
+		}
+
+		if reuseGrpcListener = reuseListener(conf, typ); !reuseGrpcListener {
+			clusterServerConfig, clusterGRPCServer = configureClusterListener(conf, serverConfig, ioutil.ReadFile)
+		}
+
+		// If we have a separate gRPC server for the cluster,
+		// we need to update its TLS CA certificate pool.
+		serversToUpdate = append(serversToUpdate, clusterGRPCServer)
 	}
 
-	var servers = []*comm.GRPCServer{grpcServer}
-	// If we have a separate gRPC server for the cluster, we need to update its TLS
-	// CA certificate pool too.
-	if clusterGRPCServer != grpcServer {
-		servers = append(servers, clusterGRPCServer)
+	// if cluster is reusing client-facing server, then it is already
+	// appended to serversToUpdate at this point.
+	if grpcServer.MutualTLSRequired() && !reuseGrpcListener {
+		serversToUpdate = append(serversToUpdate, grpcServer)
 	}
 
 	tlsCallback := func(bundle *channelconfig.Bundle) {
-		// only need to do this if mutual TLS is required or if the orderer node is part of a cluster
-		if grpcServer.MutualTLSRequired() || clusterType {
-			logger.Debug("Executing callback to update root CAs")
-			updateTrustedRoots(caSupport, bundle, servers...)
-			if clusterType {
-				updateClusterDialer(caSupport, clusterDialer, clusterClientConfig.SecOpts.ServerRootCAs)
-			}
+		logger.Debug("Executing callback to update root CAs")
+		updateTrustedRoots(caSupport, bundle, serversToUpdate...)
+		if clusterType {
+			updateClusterDialer(caSupport, clusterDialer, clusterClientConfig.SecOpts.ServerRootCAs)
 		}
 	}
 
-	manager := initializeMultichannelRegistrar(bootstrapBlock, r, clusterDialer, clusterServerConfig, clusterGRPCServer, conf, signer, metricsProvider, opsSystem, lf, tlsCallback)
+	sigHdr, err := signer.NewSignatureHeader()
+	if err != nil {
+		logger.Panicf("Failed creating a signature header: %v", err)
+	}
+
+	expirationLogger := flogging.MustGetLogger("certmonitor")
+	crypto.TrackExpiration(
+		serverConfig.SecOpts.UseTLS,
+		serverConfig.SecOpts.Certificate,
+		[][]byte{clusterClientConfig.SecOpts.Certificate},
+		sigHdr.Creator,
+		expirationLogger.Warnf, // This can be used to piggyback a metric event in the future
+		time.Now(),
+		time.AfterFunc)
+
+	manager := initializeMultichannelRegistrar(clusterBootBlock, r, clusterDialer, clusterServerConfig, clusterGRPCServer, conf, signer, metricsProvider, opsSystem, lf, tlsCallback)
 	mutualTLS := serverConfig.SecOpts.UseTLS && serverConfig.SecOpts.RequireClientCert
-	server := NewServer(manager, metricsProvider, &conf.Debug, conf.General.Authentication.TimeWindow, mutualTLS)
+	expiration := conf.General.Authentication.NoExpirationChecks
+	server := NewServer(manager, metricsProvider, &conf.Debug, conf.General.Authentication.TimeWindow, mutualTLS, expiration)
 
 	logger.Infof("Starting %s", metadata.GetVersionInfo())
 	go handleSignals(addPlatformSignals(map[os.Signal]func(){
@@ -169,7 +201,7 @@ func Start(cmd string, conf *localconfig.TopLevel) {
 		},
 	}))
 
-	if clusterGRPCServer != grpcServer {
+	if !reuseGrpcListener && clusterType {
 		logger.Info("Starting cluster listener on", clusterGRPCServer.Address())
 		go clusterGRPCServer.Start()
 	}
@@ -178,6 +210,72 @@ func Start(cmd string, conf *localconfig.TopLevel) {
 	ab.RegisterAtomicBroadcastServer(grpcServer.Server(), server)
 	logger.Info("Beginning to serve requests")
 	grpcServer.Start()
+}
+
+func reuseListener(conf *localconfig.TopLevel, typ string) bool {
+	clusterConf := conf.General.Cluster
+	// If listen address is not configured, and the TLS certificate isn't configured,
+	// it means we use the general listener of the node.
+	if clusterConf.ListenPort == 0 && clusterConf.ServerCertificate == "" && clusterConf.ListenAddress == "" && clusterConf.ServerPrivateKey == "" {
+		logger.Info("Cluster listener is not configured, defaulting to use the general listener on port", conf.General.ListenPort)
+
+		if !conf.General.TLS.Enabled {
+			logger.Panicf("TLS is required for running ordering nodes of type %s.", typ)
+		}
+
+		return true
+	}
+
+	// Else, one of the above is defined, so all 4 properties should be defined.
+	if clusterConf.ListenPort == 0 || clusterConf.ServerCertificate == "" || clusterConf.ListenAddress == "" || clusterConf.ServerPrivateKey == "" {
+		logger.Panic("Options: General.Cluster.ListenPort, General.Cluster.ListenAddress, General.Cluster.ServerCertificate," +
+			" General.Cluster.ServerPrivateKey, should be defined altogether.")
+	}
+
+	return false
+}
+
+// Extract system channel last config block
+func extractSysChanLastConfig(lf blockledger.Factory, bootstrapBlock *cb.Block) *cb.Block {
+	// Are we bootstrapping?
+	chainCount := len(lf.ChainIDs())
+	if chainCount == 0 {
+		logger.Info("Bootstrapping because no existing channels")
+		return nil
+	}
+	logger.Infof("Not bootstrapping because of %d existing channels", chainCount)
+
+	systemChannelName, err := utils.GetChainIDFromBlock(bootstrapBlock)
+	if err != nil {
+		logger.Panicf("Failed extracting system channel name from bootstrap block: %v", err)
+	}
+	systemChannelLedger, err := lf.GetOrCreate(systemChannelName)
+	if err != nil {
+		logger.Panicf("Failed getting system channel ledger: %v", err)
+	}
+	height := systemChannelLedger.Height()
+	lastConfigBlock := multichannel.ConfigBlock(systemChannelLedger)
+	logger.Infof("System channel: name=%s, height=%d, last config block number=%d",
+		systemChannelName, height, lastConfigBlock.Header.Number)
+	return lastConfigBlock
+}
+
+// Select cluster boot block
+func selectClusterBootBlock(bootstrapBlock, sysChanLastConfig *cb.Block) *cb.Block {
+	if sysChanLastConfig == nil {
+		logger.Debug("Selected bootstrap block, because system channel last config block is nil")
+		return bootstrapBlock
+	}
+
+	if sysChanLastConfig.Header.Number > bootstrapBlock.Header.Number {
+		logger.Infof("Cluster boot block is system channel last config block; Blocks Header.Number system-channel=%d, bootstrap=%d",
+			sysChanLastConfig.Header.Number, bootstrapBlock.Header.Number)
+		return sysChanLastConfig
+	}
+
+	logger.Infof("Cluster boot block is bootstrap (genesis) block; Blocks Header.Number system-channel=%d, bootstrap=%d",
+		sysChanLastConfig.Header.Number, bootstrapBlock.Header.Number)
+	return bootstrapBlock
 }
 
 func createReplicator(
@@ -268,23 +366,9 @@ func handleSignals(handlers map[os.Signal]func()) {
 
 type loadPEMFunc func(string) ([]byte, error)
 
-// configureClusterListener gets a ServerConfig and a GRPCServer, and:
-// 1) If the TopLevel configuration states that the cluster configuration for the cluster gRPC service is missing, returns them back.
-// 2) Else, returns a new ServerConfig and a new gRPC server (with its own TLS listener on a different port).
-func configureClusterListener(conf *localconfig.TopLevel, generalConf comm.ServerConfig, generalSrv *comm.GRPCServer, loadPEM loadPEMFunc) (comm.ServerConfig, *comm.GRPCServer) {
+// configureClusterListener returns a new ServerConfig and a new gRPC server (with its own TLS listener).
+func configureClusterListener(conf *localconfig.TopLevel, generalConf comm.ServerConfig, loadPEM loadPEMFunc) (comm.ServerConfig, *comm.GRPCServer) {
 	clusterConf := conf.General.Cluster
-	// If listen address is not configured, or the TLS certificate isn't configured,
-	// it means we use the general listener of the node.
-	if clusterConf.ListenPort == 0 && clusterConf.ServerCertificate == "" && clusterConf.ListenAddress == "" && clusterConf.ServerPrivateKey == "" {
-		logger.Info("Cluster listener is not configured, defaulting to use the general listener on port", conf.General.ListenPort)
-		return generalConf, generalSrv
-	}
-
-	// Else, one of the above is defined, so all 4 properties should be defined.
-	if clusterConf.ListenPort == 0 || clusterConf.ServerCertificate == "" || clusterConf.ListenAddress == "" || clusterConf.ServerPrivateKey == "" {
-		logger.Panic("Options: General.Cluster.ListenPort, General.Cluster.ListenAddress, General.Cluster.ServerCertificate," +
-			" General.Cluster.ServerPrivateKey, should be defined altogether.")
-	}
 
 	cert, err := loadPEM(clusterConf.ServerCertificate)
 	if err != nil {
@@ -313,10 +397,11 @@ func configureClusterListener(conf *localconfig.TopLevel, generalConf comm.Serve
 		StreamInterceptors: generalConf.StreamInterceptors,
 		UnaryInterceptors:  generalConf.UnaryInterceptors,
 		ConnectionTimeout:  generalConf.ConnectionTimeout,
-		MetricsProvider:    generalConf.MetricsProvider,
+		ServerStatsHandler: generalConf.ServerStatsHandler,
 		Logger:             generalConf.Logger,
 		KaOpts:             generalConf.KaOpts,
 		SecOpts: &comm.SecureOptions{
+			TimeShift:         conf.General.Cluster.TLSHandshakeTimeShift,
 			CipherSuites:      comm.DefaultTLSCipherSuites,
 			ClientRootCAs:     clientRootCAs,
 			RequireClientCert: true,
@@ -334,10 +419,7 @@ func configureClusterListener(conf *localconfig.TopLevel, generalConf comm.Serve
 	return serverConf, srv
 }
 
-func initializeClusterClientConfig(conf *localconfig.TopLevel, clusterType bool, bootstrapBlock *cb.Block) comm.ClientConfig {
-	if clusterType && !conf.General.TLS.Enabled {
-		logger.Panicf("TLS is required for running ordering nodes of type %s.", consensusType(bootstrapBlock))
-	}
+func initializeClusterClientConfig(conf *localconfig.TopLevel) comm.ClientConfig {
 	cc := comm.ClientConfig{
 		AsyncConnect: true,
 		KaOpts:       comm.DefaultKeepaliveOptions,
@@ -345,7 +427,7 @@ func initializeClusterClientConfig(conf *localconfig.TopLevel, clusterType bool,
 		SecOpts:      &comm.SecureOptions{},
 	}
 
-	if (!conf.General.TLS.Enabled) || conf.General.Cluster.ClientCertificate == "" {
+	if conf.General.Cluster.ClientCertificate == "" {
 		return cc
 	}
 
@@ -372,6 +454,7 @@ func initializeClusterClientConfig(conf *localconfig.TopLevel, clusterType bool,
 	}
 
 	cc.SecOpts = &comm.SecureOptions{
+		TimeShift:         conf.General.Cluster.TLSHandshakeTimeShift,
 		RequireClientCert: true,
 		CipherSuites:      comm.DefaultTLSCipherSuites,
 		ServerRootCAs:     serverRootCAs,
@@ -438,15 +521,17 @@ func initializeServerConfig(conf *localconfig.TopLevel, metricsProvider metrics.
 	kaOpts.ServerTimeout = conf.General.Keepalive.ServerTimeout
 
 	commLogger := flogging.MustGetLogger("core.comm").With("server", "Orderer")
+
 	if metricsProvider == nil {
 		metricsProvider = &disabled.Provider{}
 	}
 
 	return comm.ServerConfig{
-		SecOpts:         secureOpts,
-		KaOpts:          kaOpts,
-		Logger:          commLogger,
-		MetricsProvider: metricsProvider,
+		SecOpts:            secureOpts,
+		KaOpts:             kaOpts,
+		Logger:             commLogger,
+		ServerStatsHandler: comm.NewServerStatsHandler(metricsProvider),
+		ConnectionTimeout:  conf.General.ConnectionTimeout,
 		StreamInterceptors: []grpc.StreamServerInterceptor{
 			grpcmetrics.StreamServerInterceptor(grpcmetrics.NewStreamMetrics(metricsProvider)),
 			grpclogging.StreamServerInterceptor(flogging.MustGetLogger("comm.grpc.server").Zap()),
@@ -489,11 +574,11 @@ func extractBootstrapBlock(conf *localconfig.TopLevel) *cb.Block {
 func initializeBootstrapChannel(genesisBlock *cb.Block, lf blockledger.Factory) {
 	chainID, err := utils.GetChainIDFromBlock(genesisBlock)
 	if err != nil {
-		logger.Fatal("Failed to parse chain ID from genesis block:", err)
+		logger.Fatal("Failed to parse channel ID from genesis block:", err)
 	}
 	gl, err := lf.GetOrCreate(chainID)
 	if err != nil {
-		logger.Fatal("Failed to create the system chain:", err)
+		logger.Fatal("Failed to create the system channel:", err)
 	}
 
 	if err := gl.Append(genesisBlock); err != nil {
@@ -573,22 +658,26 @@ func initializeMultichannelRegistrar(
 	if len(lf.ChainIDs()) == 0 {
 		initializeBootstrapChannel(genesisBlock, lf)
 	} else {
-		logger.Info("Not bootstrapping because of existing chains")
+		logger.Info("Not bootstrapping because of existing channels")
 	}
 
 	consenters := make(map[string]consensus.Consenter)
 
-	registrar := multichannel.NewRegistrar(lf, signer, metricsProvider, callbacks...)
+	registrar := multichannel.NewRegistrar(*conf, lf, signer, metricsProvider, callbacks...)
+
+	var icr etcdraft.InactiveChainRegistry
+	if isClusterType(bootstrapBlock) {
+		etcdConsenter := initializeEtcdraftConsenter(consenters, conf, lf, clusterDialer, bootstrapBlock, ri, srvConf, srv, registrar, metricsProvider)
+		icr = etcdConsenter.InactiveChainRegistry
+	}
 
 	consenters["solo"] = solo.New()
 	var kafkaMetrics *kafka.Metrics
-	consenters["kafka"], kafkaMetrics = kafka.New(conf, metricsProvider, healthChecker, registrar)
+	consenters["kafka"], kafkaMetrics = kafka.New(conf.Kafka, metricsProvider, healthChecker, icr, registrar.CreateChain)
 	// Note, we pass a 'nil' channel here, we could pass a channel that
 	// closes if we wished to cleanup this routine on exit.
 	go kafkaMetrics.PollGoMetricsUntilStop(time.Minute, nil)
-	if isClusterType(bootstrapBlock) {
-		initializeEtcdraftConsenter(consenters, conf, lf, clusterDialer, bootstrapBlock, ri, srvConf, srv, registrar, metricsProvider)
-	}
+
 	registrar.Initialize(consenters)
 	return registrar
 }
@@ -604,7 +693,7 @@ func initializeEtcdraftConsenter(
 	srv *comm.GRPCServer,
 	registrar *multichannel.Registrar,
 	metricsProvider metrics.Provider,
-) {
+) *etcdraft.Consenter {
 	replicationRefreshInterval := conf.General.Cluster.ReplicationBackgroundRefreshInterval
 	if replicationRefreshInterval == 0 {
 		replicationRefreshInterval = defaultReplicationBackgroundRefreshInterval
@@ -644,6 +733,7 @@ func initializeEtcdraftConsenter(
 	go icr.run()
 	raftConsenter := etcdraft.New(clusterDialer, conf, srvConf, srv, registrar, icr, metricsProvider)
 	consenters["etcdraft"] = raftConsenter
+	return raftConsenter
 }
 
 func newOperationsSystem(ops localconfig.Operations, metrics localconfig.Metrics) *operations.System {
@@ -670,12 +760,10 @@ func newOperationsSystem(ops localconfig.Operations, metrics localconfig.Metrics
 	})
 }
 
-func updateTrustedRoots(rootCASupport *comm.CASupport, cm channelconfig.Resources, servers ...*comm.GRPCServer) {
+func updateTrustedRoots(rootCASupport *comm.CredentialSupport, cm channelconfig.Resources, servers ...*comm.GRPCServer) {
 	rootCASupport.Lock()
 	defer rootCASupport.Unlock()
 
-	appRootCAs := [][]byte{}
-	ordererRootCAs := [][]byte{}
 	appOrgMSPs := make(map[string]struct{})
 	ordOrgMSPs := make(map[string]struct{})
 
@@ -709,7 +797,10 @@ func updateTrustedRoots(rootCASupport *comm.CASupport, cm channelconfig.Resource
 		logger.Errorf("Error getting root CAs for channel %s (%s)", cid, err)
 		return
 	}
+	var appRootCAs comm.CertificateBundle
+	ordererRootCAsPerOrg := make(map[string]comm.CertificateBundle)
 	for k, v := range msps {
+		var ordererRootCAs comm.CertificateBundle
 		// check to see if this is a FABRIC MSP
 		if v.GetType() == msp.FABRIC {
 			for _, root := range v.GetTLSRootCerts() {
@@ -736,24 +827,27 @@ func updateTrustedRoots(rootCASupport *comm.CASupport, cm channelconfig.Resource
 					ordererRootCAs = append(ordererRootCAs, intermediate)
 				}
 			}
+			ordererRootCAsPerOrg[k] = ordererRootCAs
 		}
 	}
 	rootCASupport.AppRootCAsByChain[cid] = appRootCAs
-	rootCASupport.OrdererRootCAsByChain[cid] = ordererRootCAs
+	rootCASupport.OrdererRootCAsByChainAndOrg[cid] = ordererRootCAsPerOrg
 
 	// now iterate over all roots for all app and orderer chains
 	trustedRoots := [][]byte{}
 	for _, roots := range rootCASupport.AppRootCAsByChain {
 		trustedRoots = append(trustedRoots, roots...)
 	}
-	for _, roots := range rootCASupport.OrdererRootCAsByChain {
-		trustedRoots = append(trustedRoots, roots...)
+	// add all root CAs from all channels to the trusted roots
+	for _, orgRootCAs := range rootCASupport.OrdererRootCAsByChainAndOrg {
+		for _, roots := range orgRootCAs {
+			trustedRoots = append(trustedRoots, roots...)
+		}
 	}
 	// also need to append statically configured root certs
 	if len(rootCASupport.ClientRootCAs) > 0 {
 		trustedRoots = append(trustedRoots, rootCASupport.ClientRootCAs...)
 	}
-
 	// now update the client roots for the gRPC server
 	for _, srv := range servers {
 		err = srv.SetClientRootCAs(trustedRoots)
@@ -766,23 +860,22 @@ func updateTrustedRoots(rootCASupport *comm.CASupport, cm channelconfig.Resource
 	}
 }
 
-func updateClusterDialer(rootCASupport *comm.CASupport, clusterDialer *cluster.PredicateDialer, localClusterRootCAs [][]byte) {
+func updateClusterDialer(rootCASupport *comm.CredentialSupport, clusterDialer *cluster.PredicateDialer, localClusterRootCAs [][]byte) {
 	rootCASupport.Lock()
 	defer rootCASupport.Unlock()
 
 	// Iterate over all orderer root CAs for all chains and add them
 	// to the root CAs
 	var clusterRootCAs [][]byte
-	for _, roots := range rootCASupport.OrdererRootCAsByChain {
-		clusterRootCAs = append(clusterRootCAs, roots...)
+	for _, orgRootCAs := range rootCASupport.OrdererRootCAsByChainAndOrg {
+		for _, roots := range orgRootCAs {
+			clusterRootCAs = append(clusterRootCAs, roots...)
+		}
 	}
-
 	// Add the local root CAs too
 	clusterRootCAs = append(clusterRootCAs, localClusterRootCAs...)
 	// Update the cluster config with the new root CAs
-	clusterConfig := clusterDialer.Config.Load().(comm.ClientConfig)
-	clusterConfig.SecOpts.ServerRootCAs = clusterRootCAs
-	clusterDialer.SetConfig(clusterConfig)
+	clusterDialer.UpdateRootCAs(clusterRootCAs)
 }
 
 func prettyPrintStruct(i interface{}) {

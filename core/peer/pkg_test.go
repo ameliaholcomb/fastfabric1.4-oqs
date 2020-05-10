@@ -90,6 +90,18 @@ func createMSPConfig(rootCerts, tlsRootCerts, tlsIntermediateCerts [][]byte,
 		TlsRootCerts:         tlsRootCerts,
 		TlsIntermediateCerts: tlsIntermediateCerts,
 		Name:                 mspID,
+		FabricNodeOus: &mspproto.FabricNodeOUs{
+			Enable: true,
+			ClientOuIdentifier: &mspproto.FabricOUIdentifier{
+				OrganizationalUnitIdentifier: "client",
+			},
+			PeerOuIdentifier: &mspproto.FabricOUIdentifier{
+				OrganizationalUnitIdentifier: "peer",
+			},
+			AdminOuIdentifier: &mspproto.FabricOUIdentifier{
+				OrganizationalUnitIdentifier: "admin",
+			},
+		},
 	}
 
 	fmpsjs, err := proto.Marshal(fmspconf)
@@ -209,6 +221,22 @@ func TestUpdateRootsFromConfigBlock(t *testing.T) {
 		RootCAs:      org1CertPool,
 	})
 
+	countTotalCertsInBundle := func(perOrgBundle comm.PerOrgCertificateBundle) int {
+		var count int
+		for _, bundle := range perOrgBundle {
+			count = count + len(bundle)
+		}
+		return count
+	}
+
+	countTotalCertsAcrossChannels := func(orgRootCAs comm.OrgRootCAs) int {
+		var count = 0
+		for _, perOrgBundle := range orgRootCAs {
+			count = count + countTotalCertsInBundle(perOrgBundle)
+		}
+		return count
+	}
+
 	// basic function tests
 	var tests = []struct {
 		name          string
@@ -284,6 +312,7 @@ func TestUpdateRootsFromConfigBlock(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Logf("Running test %s ...", test.name)
+			peer.ZeroPeerServersSingleton()
 			server, err := peer.NewPeerServer("localhost:0", test.serverConfig)
 			if err != nil {
 				t.Fatalf("NewPeerServer failed with error [%s]", err)
@@ -312,10 +341,8 @@ func TestUpdateRootsFromConfigBlock(t *testing.T) {
 				// creating channel should update the trusted client roots
 				test.createChannel()
 
-				// make sure we have the expected number of CAs
-				appCAs, ordererCAs := comm.GetCredentialSupport().GetClientRootCAs()
-				assert.Equal(t, test.numAppCAs, len(appCAs), "Did not find expected number of app CAs for channel")
-				assert.Equal(t, test.numOrdererCAs, len(ordererCAs), "Did not find expected number of orderer CAs for channel")
+				assert.Equal(t, test.numAppCAs, countTotalCertsInBundle(comm.GetCredentialSupport().AppRootCAsByChain), "Did not find expected number of app CAs for channel")
+				assert.Equal(t, test.numOrdererCAs, countTotalCertsAcrossChannels(comm.GetCredentialSupport().OrdererRootCAsByChainAndOrg), "Did not find expected number of orderer CAs for channel")
 
 				// invoke the EmptyCall service with good options
 				_, err = invokeEmptyCall(testAddress, test.goodOptions)

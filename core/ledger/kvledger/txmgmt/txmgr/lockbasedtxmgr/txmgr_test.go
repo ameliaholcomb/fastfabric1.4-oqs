@@ -1026,17 +1026,22 @@ func TestFindAndRemoveStalePvtData(t *testing.T) {
 
 	// construct pvt data for some of the above missing data. note that no
 	// duplicate entries are expected
-	// old value and hence should not get accepted
+
+	// existent keyhash - a kvwrite with lower version (than the version of existent keyhash) should be considered stale
 	hashedCompositeKeyNs1Coll1Key1 := privacyenabledstate.HashedCompositeKey{Namespace: "ns1", CollectionName: "coll1", KeyHash: string(util.ComputeStringHash("key1"))}
 	pvtKVWriteNs1Coll1Key1 := &privacyenabledstate.PvtKVWrite{Key: "key1", IsDelete: false, Value: []byte("old_value_1_1_1"), Version: version.NewHeight(1, 0)}
 
-	// new value and hence should get accepted
+	// existent keyhash - a kvwrite with higher version (than the version of existent keyhash) should not be considered stale
 	hashedCompositeKeyNs2Coll1Key2 := privacyenabledstate.HashedCompositeKey{Namespace: "ns2", CollectionName: "coll1", KeyHash: string(util.ComputeStringHash("key2"))}
 	pvtKVWriteNs2Coll1Key2 := &privacyenabledstate.PvtKVWrite{Key: "key2", IsDelete: false, Value: []byte("value_2_1_2"), Version: version.NewHeight(2, 1)}
 
-	// delete -- should get accepted
+	// non existent keyhash (because deleted earlier or expired) - a kvwrite for delete should not be considered stale
 	hashedCompositeKeyNs1Coll3Key3 := privacyenabledstate.HashedCompositeKey{Namespace: "ns1", CollectionName: "coll3", KeyHash: string(util.ComputeStringHash("key3"))}
 	pvtKVWriteNs1Coll3Key3 := &privacyenabledstate.PvtKVWrite{Key: "key3", IsDelete: true, Value: nil, Version: version.NewHeight(2, 3)}
+
+	// non existent keyhash (because deleted earlier or expired) - a kvwrite for value set should be considered stale
+	hashedCompositeKeyNs1Coll4Key4 := privacyenabledstate.HashedCompositeKey{Namespace: "ns1", CollectionName: "coll4", KeyHash: string(util.ComputeStringHash("key4"))}
+	pvtKVWriteNs1Coll4Key4 := &privacyenabledstate.PvtKVWrite{Key: "key4", Value: []byte("value_1_4_4"), Version: version.NewHeight(2, 3)}
 
 	// there would be a version mismatch but the hash value must be the same. hence,
 	// this should be accepted too
@@ -1048,6 +1053,7 @@ func TestFindAndRemoveStalePvtData(t *testing.T) {
 		hashedCompositeKeyNs2Coll1Key2: pvtKVWriteNs2Coll1Key2,
 		hashedCompositeKeyNs1Coll3Key3: pvtKVWriteNs1Coll3Key3,
 		hashedCompositeKeyNs2Coll2Key3: pvtKVWriteNs2Coll2Key3,
+		hashedCompositeKeyNs1Coll4Key4: pvtKVWriteNs1Coll4Key4,
 	}
 
 	// created the expected batch from ValidateAndPrepareBatchForPvtDataofOldBlocks
@@ -1253,7 +1259,7 @@ func TestRemoveStaleAndCommitPvtDataOfOldBlocksWithExpiry(t *testing.T) {
 	// stored pvt key would get expired and purged while committing block 3
 	blkAndPvtdata := prepareNextBlockForTest(t, txMgr, bg, "txid-1",
 		map[string]string{"pubkey1": "pub-value1"}, map[string]string{"pvtkey1": "pvt-value1"}, true)
-	_, err := txMgr.ValidateAndPrepare(blkAndPvtdata, true)
+	_, _, err := txMgr.ValidateAndPrepare(blkAndPvtdata, true)
 	assert.NoError(t, err)
 	// committing block 1
 	assert.NoError(t, txMgr.Commit())
@@ -1279,7 +1285,7 @@ func TestRemoveStaleAndCommitPvtDataOfOldBlocksWithExpiry(t *testing.T) {
 	// stored pvt key would get expired and purged while committing block 4
 	blkAndPvtdata = prepareNextBlockForTest(t, txMgr, bg, "txid-2",
 		map[string]string{"pubkey2": "pub-value2"}, map[string]string{"pvtkey2": "pvt-value2"}, true)
-	_, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
+	_, _, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
 	assert.NoError(t, err)
 	// committing block 2
 	assert.NoError(t, txMgr.Commit())
@@ -1289,7 +1295,7 @@ func TestRemoveStaleAndCommitPvtDataOfOldBlocksWithExpiry(t *testing.T) {
 
 	blkAndPvtdata = prepareNextBlockForTest(t, txMgr, bg, "txid-3",
 		map[string]string{"pubkey3": "pub-value3"}, nil, false)
-	_, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
+	_, _, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
 	assert.NoError(t, err)
 	// committing block 3
 	assert.NoError(t, txMgr.Commit())
@@ -1314,7 +1320,7 @@ func TestRemoveStaleAndCommitPvtDataOfOldBlocksWithExpiry(t *testing.T) {
 
 	blkAndPvtdata = prepareNextBlockForTest(t, txMgr, bg, "txid-4",
 		map[string]string{"pubkey4": "pub-value4"}, nil, false)
-	_, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
+	_, _, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
 	assert.NoError(t, err)
 	// committing block 4 and should purge pvtkey2
 	assert.NoError(t, txMgr.Commit())
@@ -1408,7 +1414,7 @@ func TestTxSimulatorMissingPvtdataExpiry(t *testing.T) {
 
 	blkAndPvtdata := prepareNextBlockForTest(t, txMgr, bg, "txid-1",
 		map[string]string{"pubkey1": "pub-value1"}, map[string]string{"pvtkey1": "pvt-value1"}, false)
-	_, err := txMgr.ValidateAndPrepare(blkAndPvtdata, true)
+	_, _, err := txMgr.ValidateAndPrepare(blkAndPvtdata, true)
 	assert.NoError(t, err)
 	assert.NoError(t, txMgr.Commit())
 
@@ -1417,7 +1423,7 @@ func TestTxSimulatorMissingPvtdataExpiry(t *testing.T) {
 	blkAndPvtdata = prepareNextBlockForTest(t, txMgr, bg, "txid-2",
 
 		map[string]string{"pubkey1": "pub-value2"}, map[string]string{"pvtkey2": "pvt-value2"}, false)
-	_, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
+	_, _, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
 	assert.NoError(t, err)
 	assert.NoError(t, txMgr.Commit())
 
@@ -1425,7 +1431,7 @@ func TestTxSimulatorMissingPvtdataExpiry(t *testing.T) {
 
 	blkAndPvtdata = prepareNextBlockForTest(t, txMgr, bg, "txid-2",
 		map[string]string{"pubkey1": "pub-value3"}, map[string]string{"pvtkey3": "pvt-value3"}, false)
-	_, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
+	_, _, err = txMgr.ValidateAndPrepare(blkAndPvtdata, true)
 	assert.NoError(t, err)
 	assert.NoError(t, txMgr.Commit())
 
@@ -1520,7 +1526,7 @@ func testTxWithPvtdataMetadata(t *testing.T, env testEnv, ns, coll string) {
 	s1.Done()
 
 	blkAndPvtdata1 := prepareNextBlockForTestFromSimulator(t, bg, s1)
-	_, err := txMgr.ValidateAndPrepare(blkAndPvtdata1, true)
+	_, _, err := txMgr.ValidateAndPrepare(blkAndPvtdata1, true)
 	assert.NoError(t, err)
 	assert.NoError(t, txMgr.Commit())
 
@@ -1539,7 +1545,7 @@ func testTxWithPvtdataMetadata(t *testing.T, env testEnv, ns, coll string) {
 	s2.Done()
 
 	blkAndPvtdata2 := prepareNextBlockForTestFromSimulator(t, bg, s2)
-	_, err = txMgr.ValidateAndPrepare(blkAndPvtdata2, true)
+	_, _, err = txMgr.ValidateAndPrepare(blkAndPvtdata2, true)
 	assert.NoError(t, err)
 	assert.NoError(t, txMgr.Commit())
 
@@ -1608,4 +1614,12 @@ func checkPvtdataTestQueryResults(t *testing.T, qe ledger.QueryExecutor, ns, col
 	assert.NoError(t, err)
 	assert.Equal(t, expectedMetadata, committedMetadata)
 	t.Logf("key=%s, value=%s, metadata=%s", key, committedVal, committedMetadata)
+}
+
+func TestName(t *testing.T) {
+	testEnv := testEnvsMap[levelDBtestEnvName]
+	testEnv.init(t, "testLedger", nil)
+	defer testEnv.cleanup()
+	txMgr := testEnv.getTxMgr()
+	assert.Equal(t, "state", txMgr.Name())
 }

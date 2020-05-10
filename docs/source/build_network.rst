@@ -156,7 +156,7 @@ Next, you can bring the network up with one of the following commands:
 
 The above command will compile Golang chaincode images and spin up the corresponding
 containers. Go is the default chaincode language, however there is also support
-for `Node.js <https://fabric-shim.github.io/>`_ and `Java <https://fabric-chaincode-java.github.io/>`_
+for `Node.js <https://hyperledger.github.io/fabric-chaincode-node/>`_ and `Java <https://hyperledger.github.io/fabric-chaincode-java/>`_
 chaincode. If you'd like to run through this tutorial with node chaincode, pass
 the following command instead:
 
@@ -168,10 +168,10 @@ the following command instead:
   ./byfn.sh up -l node
 
 .. note:: For more information on the Node.js shim, please refer to its
-          `documentation <https://fabric-shim.github.io/ChaincodeInterface.html>`_.
+          `documentation <https://hyperledger.github.io/fabric-chaincode-node/release-1.4/api/fabric-shim.ChaincodeInterface.html>`_.
 
 .. note:: For more information on the Java shim, please refer to its
-          `documentation <https://fabric-chaincode-java.github.io/org/hyperledger/fabric/shim/Chaincode.html>`_.
+          `documentation <https://hyperledger.github.io/fabric-chaincode-java/release-1.4/api/org/hyperledger/fabric/shim/Chaincode.html>`_.
 
 Тo make the sample run with Java chaincode, you have to specify ``-l java`` as follows:
 
@@ -459,8 +459,9 @@ following:
   2017-10-26 19:21:56.309 EDT [common/tools/configtxgen] doOutputBlock -> INFO 003 Writing genesis block
 
 .. note:: The orderer genesis block and the subsequent artifacts we are about to create
-          will be output into the ``channel-artifacts`` directory at the root of this
-          project. The `channelID` in the above command is the name of the system channel.
+          will be output into the ``channel-artifacts`` directory at the root of the
+          ``first-network`` directory. The `channelID` in the above command is the
+          name of the system channel.
 
 .. _createchanneltx:
 
@@ -833,7 +834,7 @@ update the state DB. The syntax for invoke is as follows:
 
     # be sure to set the -C and -n flags appropriately
 
-    peer chaincode invoke -o orderer.example.com:7050 --tls true --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem -C $CHANNEL_NAME -n mycc --peerAddresses peer0.org1.example.com:9051 --tlsRootCertFiles /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt --peerAddresses peer0.org2.example.com:9051 --tlsRootCertFiles /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt -c '{"Args":["invoke","a","b","10"]}'
+    peer chaincode invoke -o orderer.example.com:7050 --tls true --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem -C $CHANNEL_NAME -n mycc --peerAddresses peer0.org1.example.com:7051 --tlsRootCertFiles /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt --peerAddresses peer0.org2.example.com:9051 --tlsRootCertFiles /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt -c '{"Args":["invoke","a","b","10"]}'
 
 Query
 ^^^^^
@@ -1154,7 +1155,7 @@ channel, use the following steps to interact with the **marbles02** chaincode:
        # be sure to modify the $CHANNEL_NAME variable accordingly for the instantiate command
 
        peer chaincode install -n marbles -v 1.0 -p github.com/chaincode/marbles02/go
-       peer chaincode instantiate -o orderer.example.com:7050 --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem -C $CHANNEL_NAME -n marbles -v 1.0 -c '{"Args":["init"]}' -P "OR ('Org0MSP.peer','Org1MSP.peer')"
+       peer chaincode instantiate -o orderer.example.com:7050 --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem -C $CHANNEL_NAME -n marbles -v 1.0 -c '{"Args":["init"]}' -P "OR ('Org1MSP.peer','Org2MSP.peer')"
 
 -  Create some marbles and move them around:
 

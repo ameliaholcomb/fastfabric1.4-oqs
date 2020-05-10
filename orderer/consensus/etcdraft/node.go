@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/clock"
-	"github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
@@ -46,20 +46,15 @@ type node struct {
 	raft.Node
 }
 
-func (n *node) start(fresh, join, migration bool) {
+func (n *node) start(fresh, join bool) {
 	raftPeers := RaftPeers(n.metadata.ConsenterIds)
 	n.logger.Debugf("Starting raft node: #peers: %v", len(raftPeers))
 
 	var campaign bool
 	if fresh {
 		if join {
-			if !migration {
-				raftPeers = nil
-				n.logger.Info("Starting raft node to join an existing channel")
-
-			} else {
-				n.logger.Info("Starting raft node to join an existing channel, after consensus-type migration")
-			}
+			raftPeers = nil
+			n.logger.Info("Starting raft node to join an existing channel")
 		} else {
 			n.logger.Info("Starting raft node as part of a new channel")
 
@@ -81,6 +76,9 @@ func (n *node) start(fresh, join, migration bool) {
 }
 
 func (n *node) run(campaign bool) {
+	electionTimeout := n.tickInterval.Seconds() * float64(n.config.ElectionTick)
+	halfElectionTimeout := electionTimeout / 2
+
 	raftTicker := n.clock.NewTicker(n.tickInterval)
 
 	if s := n.storage.Snapshot(); !raft.IsEmptySnap(s) {
@@ -127,6 +125,9 @@ func (n *node) run(campaign bool) {
 			}
 			duration := n.clock.Since(startStoring).Seconds()
 			n.metrics.DataPersistDuration.Observe(float64(duration))
+			if duration > halfElectionTimeout {
+				n.logger.Warningf("WAL sync took %v seconds and the network is configured to start elections after %v seconds. Your disk is too slow and may cause loss of quorum and trigger leadership election.", duration, electionTimeout)
+			}
 
 			if !raft.IsEmptySnap(rd.Snapshot) {
 				n.chain.snapC <- &rd.Snapshot

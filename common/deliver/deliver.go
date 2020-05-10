@@ -87,10 +87,11 @@ func (inspector InspectorFunc) Inspect(ctx context.Context, p proto.Message) err
 
 // Handler handles server requests.
 type Handler struct {
-	ChainManager     ChainManager
-	TimeWindow       time.Duration
-	BindingInspector Inspector
-	Metrics          *Metrics
+	ExpirationCheckFunc func(identityBytes []byte) time.Time
+	ChainManager        ChainManager
+	TimeWindow          time.Duration
+	BindingInspector    Inspector
+	Metrics             *Metrics
 }
 
 //go:generate counterfeiter -o mock/receiver.go -fake-name Receiver . Receiver
@@ -133,12 +134,17 @@ func ExtractChannelHeaderCertHash(msg proto.Message) []byte {
 }
 
 // NewHandler creates an implementation of the Handler interface.
-func NewHandler(cm ChainManager, timeWindow time.Duration, mutualTLS bool, metrics *Metrics) *Handler {
+func NewHandler(cm ChainManager, timeWindow time.Duration, mutualTLS bool, metrics *Metrics, expirationCheckDisabled bool) *Handler {
+	expirationCheck := crypto.ExpiresAt
+	if expirationCheckDisabled {
+		expirationCheck = noExpiration
+	}
 	return &Handler{
-		ChainManager:     cm,
-		TimeWindow:       timeWindow,
-		BindingInspector: InspectorFunc(comm.NewBindingInspector(mutualTLS, ExtractChannelHeaderCertHash)),
-		Metrics:          metrics,
+		ChainManager:        cm,
+		TimeWindow:          timeWindow,
+		BindingInspector:    InspectorFunc(comm.NewBindingInspector(mutualTLS, ExtractChannelHeaderCertHash)),
+		Metrics:             metrics,
+		ExpirationCheckFunc: expirationCheck,
 	}
 }
 
@@ -228,7 +234,18 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 		h.Metrics.RequestsCompleted.With(labels...).Add(1)
 	}()
 
+	seekInfo := &ab.SeekInfo{}
+	if err = proto.Unmarshal(payload.Data, seekInfo); err != nil {
+		logger.Warningf("[channel: %s] Received a signed deliver request from %s with malformed seekInfo payload: %s", chdr.ChannelId, addr, err)
+		return cb.Status_BAD_REQUEST, nil
+	}
+
 	erroredChan := chain.Errored()
+	if seekInfo.ErrorResponse == ab.SeekInfo_BEST_EFFORT {
+		// In a 'best effort' delivery of blocks, we should ignore consenter errors
+		// and continue to deliver blocks according to the client's request.
+		erroredChan = nil
+	}
 	select {
 	case <-erroredChan:
 		logger.Warningf("[channel: %s] Rejecting deliver request for %s because of consenter error", chdr.ChannelId, addr)
@@ -236,7 +253,7 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 	default:
 	}
 
-	accessControl, err := NewSessionAC(chain, envelope, srv.PolicyChecker, chdr.ChannelId, crypto.ExpiresAt)
+	accessControl, err := NewSessionAC(chain, envelope, srv.PolicyChecker, chdr.ChannelId, h.ExpirationCheckFunc)
 	if err != nil {
 		logger.Warningf("[channel: %s] failed to create access control object due to %s", chdr.ChannelId, err)
 		return cb.Status_BAD_REQUEST, nil
@@ -245,12 +262,6 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 	if err := accessControl.Evaluate(); err != nil {
 		logger.Warningf("[channel: %s] Client authorization revoked for deliver request from %s: %s", chdr.ChannelId, addr, err)
 		return cb.Status_FORBIDDEN, nil
-	}
-
-	seekInfo := &ab.SeekInfo{}
-	if err = proto.Unmarshal(payload.Data, seekInfo); err != nil {
-		logger.Warningf("[channel: %s] Received a signed deliver request from %s with malformed seekInfo payload: %s", chdr.ChannelId, addr, err)
-		return cb.Status_BAD_REQUEST, nil
 	}
 
 	if seekInfo.Start == nil || seekInfo.Stop == nil {
@@ -267,6 +278,14 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 	case *ab.SeekPosition_Oldest:
 		stopNum = number
 	case *ab.SeekPosition_Newest:
+		// when seeking only the newest block (i.e. starting
+		// and stopping at newest), don't reevaluate the ledger
+		// height as this can lead to multiple blocks being
+		// sent when only one is expected
+		if proto.Equal(seekInfo.Start, seekInfo.Stop) {
+			stopNum = number
+			break
+		}
 		stopNum = chain.Reader().Height() - 1
 	case *ab.SeekPosition_Specified:
 		stopNum = stop.Specified.Number
@@ -318,7 +337,7 @@ func (h *Handler) deliverBlocks(ctx context.Context, srv *Server, envelope *cb.E
 			return cb.Status_FORBIDDEN, nil
 		}
 
-		logger.Debugf("[channel: %s] Delivering block for (%p) for %s", chdr.ChannelId, seekInfo, addr)
+		logger.Debugf("[channel: %s] Delivering block [%d] for (%p) for %s", chdr.ChannelId, block.Header.Number, seekInfo, addr)
 
 		if err := srv.SendBlockResponse(block); err != nil {
 			logger.Warningf("[channel: %s] Error sending to %s: %s", chdr.ChannelId, addr, err)
@@ -357,4 +376,8 @@ func (h *Handler) validateChannelHeader(ctx context.Context, chdr *cb.ChannelHea
 	}
 
 	return nil
+}
+
+func noExpiration(_ []byte) time.Time {
+	return time.Time{}
 }

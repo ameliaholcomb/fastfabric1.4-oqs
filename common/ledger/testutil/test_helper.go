@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package testutil
 
 import (
-	"github.com/hyperledger/fabric/fastfabric/cached"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -50,7 +49,7 @@ func NewBlockGenerator(t *testing.T, ledgerID string, signTxs bool) (*BlockGener
 }
 
 // NextBlock constructs next block in sequence that includes a number of transactions - one per simulationResults
-func (bg *BlockGenerator) NextBlock(simulationResults [][]byte) *cached.Block {
+func (bg *BlockGenerator) NextBlock(simulationResults [][]byte) *common.Block {
 	block := ConstructBlock(bg.t, bg.blockNum, bg.previousHash, simulationResults, bg.signTxs)
 	bg.blockNum++
 	bg.previousHash = block.Header.Hash()
@@ -58,7 +57,7 @@ func (bg *BlockGenerator) NextBlock(simulationResults [][]byte) *cached.Block {
 }
 
 // NextBlockWithTxid constructs next block in sequence that includes a number of transactions - one per simulationResults
-func (bg *BlockGenerator) NextBlockWithTxid(simulationResults [][]byte, txids []string) *cached.Block {
+func (bg *BlockGenerator) NextBlockWithTxid(simulationResults [][]byte, txids []string) *common.Block {
 	// Length of simulationResults should be same as the length of txids.
 	if len(simulationResults) != len(txids) {
 		return nil
@@ -70,7 +69,7 @@ func (bg *BlockGenerator) NextBlockWithTxid(simulationResults [][]byte, txids []
 }
 
 // NextTestBlock constructs next block in sequence block with 'numTx' number of transactions for testing
-func (bg *BlockGenerator) NextTestBlock(numTx int, txSize int) *cached.Block {
+func (bg *BlockGenerator) NextTestBlock(numTx int, txSize int) *common.Block {
 	simulationResults := [][]byte{}
 	for i := 0; i < numTx; i++ {
 		simulationResults = append(simulationResults, ConstructRandomBytes(bg.t, txSize))
@@ -79,8 +78,8 @@ func (bg *BlockGenerator) NextTestBlock(numTx int, txSize int) *cached.Block {
 }
 
 // NextTestBlocks constructs 'numBlocks' number of blocks for testing
-func (bg *BlockGenerator) NextTestBlocks(numBlocks int) []*cached.Block {
-	blocks := []*cached.Block{}
+func (bg *BlockGenerator) NextTestBlocks(numBlocks int) []*common.Block {
+	blocks := []*common.Block{}
 	numTx := 10
 	for i := 0; i < numBlocks; i++ {
 		block := bg.NextTestBlock(numTx, 100)
@@ -119,7 +118,7 @@ func ConstructTransactionFromTxDetails(txDetails *TxDetails, sign bool) (*common
 	return txEnv, txID, err
 }
 
-func ConstructBlockFromBlockDetails(t *testing.T, blockDetails *BlockDetails, sign bool) *cached.Block {
+func ConstructBlockFromBlockDetails(t *testing.T, blockDetails *BlockDetails, sign bool) *common.Block {
 	var envs []*common.Envelope
 	for _, txDetails := range blockDetails.Txs {
 		env, _, err := ConstructTransactionFromTxDetails(txDetails, sign)
@@ -131,7 +130,7 @@ func ConstructBlockFromBlockDetails(t *testing.T, blockDetails *BlockDetails, si
 	return NewBlock(envs, blockDetails.BlockNum, blockDetails.PreviousHash)
 }
 
-func ConstructBlockWithTxid(t *testing.T, blockNum uint64, previousHash []byte, simulationResults [][]byte, txids []string, sign bool) *cached.Block {
+func ConstructBlockWithTxid(t *testing.T, blockNum uint64, previousHash []byte, simulationResults [][]byte, txids []string, sign bool) *common.Block {
 	envs := []*common.Envelope{}
 	for i := 0; i < len(simulationResults); i++ {
 		env, _, err := ConstructTransaction(t, simulationResults[i], txids[i], sign)
@@ -144,7 +143,7 @@ func ConstructBlockWithTxid(t *testing.T, blockNum uint64, previousHash []byte, 
 }
 
 // ConstructBlock constructs a single block
-func ConstructBlock(t *testing.T, blockNum uint64, previousHash []byte, simulationResults [][]byte, sign bool) *cached.Block {
+func ConstructBlock(t *testing.T, blockNum uint64, previousHash []byte, simulationResults [][]byte, sign bool) *common.Block {
 	envs := []*common.Envelope{}
 	for i := 0; i < len(simulationResults); i++ {
 		env, _, err := ConstructTransaction(t, simulationResults[i], "", sign)
@@ -157,7 +156,7 @@ func ConstructBlock(t *testing.T, blockNum uint64, previousHash []byte, simulati
 }
 
 //ConstructTestBlock constructs a single block with random contents
-func ConstructTestBlock(t *testing.T, blockNum uint64, numTx int, txSize int) *cached.Block {
+func ConstructTestBlock(t *testing.T, blockNum uint64, numTx int, txSize int) *common.Block {
 	simulationResults := [][]byte{}
 	for i := 0; i < numTx; i++ {
 		simulationResults = append(simulationResults, ConstructRandomBytes(t, txSize))
@@ -167,11 +166,12 @@ func ConstructTestBlock(t *testing.T, blockNum uint64, numTx int, txSize int) *c
 
 // ConstructTestBlocks returns a series of blocks starting with blockNum=0.
 // The first block in the returned array is a config tx block that represents a genesis block
-func ConstructTestBlocks(t *testing.T, numBlocks int) []*cached.Block {
+// Except the genesis block, the size of each of the block would be the same.
+func ConstructTestBlocks(t *testing.T, numBlocks int) []*common.Block {
 	bg, gb := NewBlockGenerator(t, util.GetTestChainID(), false)
-	blocks := []*cached.Block{}
+	blocks := []*common.Block{}
 	if numBlocks != 0 {
-		blocks = append(blocks, cached.WrapBlock(gb))
+		blocks = append(blocks, gb)
 	}
 	return append(blocks, bg.NextTestBlocks(numBlocks-1)...)
 }
@@ -185,7 +185,7 @@ func ConstructBytesProposalResponsePayload(version string, simulationResults []b
 	return ptestutils.ConstructBytesProposalResponsePayload(util.GetTestChainID(), ccid, nil, simulationResults)
 }
 
-func NewBlock(env []*common.Envelope, blockNum uint64, previousHash []byte) *cached.Block {
+func NewBlock(env []*common.Envelope, blockNum uint64, previousHash []byte) *common.Block {
 	block := common.NewBlock(blockNum, previousHash)
 	for i := 0; i < len(env); i++ {
 		txEnvBytes, _ := proto.Marshal(env[i])
@@ -196,5 +196,41 @@ func NewBlock(env []*common.Envelope, blockNum uint64, previousHash []byte) *cac
 
 	block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = lutils.NewTxValidationFlagsSetValue(len(env), pb.TxValidationCode_VALID)
 
-	return cached.WrapBlock(block)
+	return block
+}
+
+func SetTxID(t *testing.T, block *common.Block, txNum int, txID string) {
+	envelopeBytes := block.Data.Data[txNum]
+	envelope, err := utils.UnmarshalEnvelope(envelopeBytes)
+	if err != nil {
+		t.Fatalf("error unmarshaling envelope: %s", err)
+	}
+
+	payload, err := utils.GetPayload(envelope)
+	if err != nil {
+		t.Fatalf("error getting payload from envelope: %s", err)
+	}
+
+	channelHeader, err := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+	if err != nil {
+		t.Fatalf("error unmarshaling channel header: %s", err)
+	}
+	channelHeader.TxId = txID
+	channelHeaderBytes, err := proto.Marshal(channelHeader)
+	if err != nil {
+		t.Fatalf("error marshaling channel header: %s", err)
+	}
+	payload.Header.ChannelHeader = channelHeaderBytes
+
+	payloadBytes, err := proto.Marshal(payload)
+	if err != nil {
+		t.Fatalf("error marshaling payload: %s", err)
+	}
+
+	envelope.Payload = payloadBytes
+	envelopeBytes, err = proto.Marshal(envelope)
+	if err != nil {
+		t.Fatalf("error marshaling envelope: %s", err)
+	}
+	block.Data.Data[txNum] = envelopeBytes
 }

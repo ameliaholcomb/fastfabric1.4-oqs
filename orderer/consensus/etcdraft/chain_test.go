@@ -175,7 +175,7 @@ var _ = Describe("Chain", func() {
 		}
 
 		JustBeforeEach(func() {
-			chain, err = etcdraft.NewChain(support, opts, configurator, nil, noOpBlockPuller, observeC)
+			chain, err = etcdraft.NewChain(support, opts, configurator, nil, noOpBlockPuller, nil, observeC)
 			Expect(err).NotTo(HaveOccurred())
 
 			chain.Start()
@@ -592,7 +592,7 @@ var _ = Describe("Chain", func() {
 								Consistently(support.WriteConfigBlockCallCount).Should(Equal(0))
 
 								clock.Increment(30 * time.Minute)
-								Eventually(support.WriteBlockCallCount).Should(Equal(1))
+								Eventually(support.WriteBlockCallCount, LongEventualTimeout).Should(Equal(1))
 							})
 						})
 					})
@@ -850,7 +850,7 @@ var _ = Describe("Chain", func() {
 								os.Chmod(path.Join(walDir, f.Name()), 0300)
 							}
 
-							c, err := etcdraft.NewChain(support, opts, configurator, nil, noOpBlockPuller, observeC)
+							c, err := etcdraft.NewChain(support, opts, configurator, nil, noOpBlockPuller, nil, observeC)
 							Expect(c).To(BeNil())
 							Expect(err).To(MatchError(ContainSubstring("permission denied")))
 						})
@@ -1266,6 +1266,7 @@ var _ = Describe("Chain", func() {
 							configurator,
 							nil,
 							nil,
+							nil,
 							observeC)
 						Expect(chain).NotTo(BeNil())
 						Expect(err).NotTo(HaveOccurred())
@@ -1298,6 +1299,7 @@ var _ = Describe("Chain", func() {
 							nil,
 							nil,
 							noOpBlockPuller,
+							nil,
 							nil)
 						Expect(chain).NotTo(BeNil())
 						Expect(err).ToNot(HaveOccurred())
@@ -1326,6 +1328,7 @@ var _ = Describe("Chain", func() {
 							nil,
 							nil,
 							noOpBlockPuller,
+							nil,
 							nil)
 						Expect(chain).To(BeNil())
 						Expect(err).To(MatchError(ContainSubstring("failed to initialize WAL: mkdir")))
@@ -2053,7 +2056,7 @@ var _ = Describe("Chain", func() {
 				})
 
 				When("two type B config are sent back-to-back", func() {
-					It("discards the second", func() {
+					It("discards or rejects the second", func() {
 						// initial state: <1, 2, 3>
 						// first config: <1, 2, 3, 4>
 						// second config: <1, 2>
@@ -2071,7 +2074,15 @@ var _ = Describe("Chain", func() {
 						c1.support.ProcessConfigMsgReturns(configEnvRm, 1, nil)
 
 						Expect(c1.Configure(configEnvAdd, 0)).To(Succeed())
-						Expect(c1.Configure(configEnvRm, 0)).To(Succeed())
+						// If the first config tx is processed too quickly, consenter set is already altered and
+						// the second config tx would be rejected with error. Otherwise, the second config tx is
+						// going to be discarded during revalidation, instead of being explicitly rejected by
+						// `Configure`. Either way, there is only one config block being committed, which is the
+						// whole point of this test.
+						Expect(c1.Configure(configEnvRm, 0)).To(Or(
+							Succeed(),
+							MatchError("update of more than one consenter at a time is not supported, requested changes: add 0 node(s), remove 2 node(s)"),
+						))
 						network.exec(func(c *chain) {
 							Eventually(c.support.WriteConfigBlockCallCount, LongEventualTimeout).Should(Equal(1))
 							Consistently(c.support.WriteConfigBlockCallCount).Should(Equal(1))
@@ -3492,12 +3503,7 @@ func newChain(timeout time.Duration, channel string, dataDir string, id uint64, 
 
 	support := &consensusmocks.FakeConsenterSupport{}
 	support.ChainIDReturns(channel)
-	support.SharedConfigReturns(&mockconfig.Orderer{
-		BatchTimeoutVal: timeout,
-		CapabilitiesVal: &mockconfig.OrdererCapabilities{
-			Kafka2RaftMigVal: false,
-		},
-	})
+	support.SharedConfigReturns(&mockconfig.Orderer{BatchTimeoutVal: timeout})
 
 	cutter := mockblockcutter.NewReceiver()
 	close(cutter.Block)
@@ -3607,6 +3613,7 @@ func (c *chain) init() {
 		c.configurator,
 		c.rpc,
 		func() (etcdraft.BlockPuller, error) { return c.puller, nil },
+		nil,
 		c.observe,
 	)
 	Expect(err).NotTo(HaveOccurred())

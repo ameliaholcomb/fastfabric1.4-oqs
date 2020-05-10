@@ -19,7 +19,7 @@ import (
 	coreUtil "github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/core/common/ccprovider"
 	"github.com/hyperledger/fabric/core/common/sysccprovider"
-	"github.com/hyperledger/fabric/core/handlers/validation/api"
+	validation "github.com/hyperledger/fabric/core/handlers/validation/api"
 	"github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
 	"github.com/pkg/errors"
@@ -123,7 +123,15 @@ func (v *VsccValidatorImpl) VSCCValidateTx(seq int, payload *cached.Payload, env
 		}
 	}
 
+	namespaces := make(map[string]struct{})
 	for _, ns := range txRWSet.NsRwSets {
+		// check to make sure there is no duplicate namespace in txRWSet
+		if _, ok := namespaces[ns.NameSpace]; ok {
+			return errors.Errorf("duplicate namespace '%s' in txRWSet", ns.NameSpace),
+				peer.TxValidationCode_ILLEGAL_WRITESET
+		}
+		namespaces[ns.NameSpace] = struct{}{}
+
 		if !v.txWritesToNamespace(ns) {
 			continue
 		}

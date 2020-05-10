@@ -1,13 +1,13 @@
 What's new in v1.4
 ==================
 
-Hyperledger Fabric's First long term support release
+Hyperledger Fabric's first long term support release
 ----------------------------------------------------
 
 Hyperledger Fabric has matured since the initial v1.0 release, and so has the
 community of Fabric operators. The Fabric developers have been working with
 network operators to deliver v1.4 with a focus on stability and production
-operations. As such, v1.4 will be our first long term support release.
+operations. As such, v1.4.x will be our first long term support release.
 
 Our policy to date has been to provide bug fix (patch) releases for our most
 recent major or minor release until the next major or minor release has been
@@ -17,7 +17,7 @@ bug fixes for a period of one year from the date of release. This will likely
 result in a series of patch releases (v1.4.1, v1.4.2, and so on), where multiple
 fixes are bundled into a patch release.
 
-If you are running with Hyperledger Fabric v1.4, you can be assured that
+If you are running with Hyperledger Fabric v1.4.x, you can be assured that
 you will be able to safely upgrade to any of the subsequent patch releases.
 In the advent that there is need of some upgrade process to remedy a defect,
 we will provide that process with the patch release.
@@ -50,6 +50,10 @@ across the world to contribute nodes to a decentralized ordering service.
   The ability to stand up a sample network using a Raft ordering service has been
   added to this tutorial.
 
+* :doc:`kafka_raft_migration`:
+  If you're a user with a Kafka ordering service, this doc shows the process for
+  migrating to a Raft ordering service. Available since v1.4.2.
+
 Serviceability and operations improvements
 ------------------------------------------
 
@@ -71,15 +75,20 @@ is the recommended release for production operations.
   * The ``/metrics`` endpoint allows operators to utilize Prometheus to pull operational
     metrics from peer and orderer nodes. Metrics can also be pushed to StatsD.
 
+  * As of v1.4.4, the ``/version`` endpoint allows operators to query the release version
+    of the peer and orderer and the commit SHA from which the release was cut.
+
 Improved programming model for developing applications
 ------------------------------------------------------
 
 Writing decentralized applications has just gotten easier. Programming model
-improvements in the Node.js SDK and Node.js chaincode makes the development
+improvements for smart contracts (chaincode) and the SDKs makes the development
 of decentralized applications more intuitive, allowing you to focus
-on your application logic. The existing npm packages are still available for
-use, while the new npm packages provide a layer of abstraction to improve
-developer productivity and ease of use.
+on your application logic. These programming model enhancements are available
+for Node.js (as of Fabric v1.4.0) and Java (as of Fabric v1.4.2). The existing
+SDKs are still available for use and existing applications will continue to work.
+It is recommended that developers migrate to the new SDKs, which provide a layer
+of abstraction to improve developer productivity and ease of use.
 
 New documentation helps you
 understand the various aspects of creating a decentralized application for
@@ -120,13 +129,13 @@ New tutorials
 -------------
 
 * :doc:`write_first_app`:
-  This tutorial has been updated to leverage the improved Node.js SDK and chaincode
-  programming model. The tutorial has both JavaScript and Typescript examples of
-  the client application and chaincode.
+  This tutorial has been updated to leverage the improved smart contract (chaincode)
+  and SDK programming model. The tutorial has Java, JavaScript, and Typescript examples
+  of the client application and chaincode.
 
 * :doc:`tutorial/commercial_paper`
   As mentioned above, this is the tutorial that accompanies the new Developing
-  Applications documentation.
+  Applications documentation. This contains both Java and JavaScript code.
 
 * :doc:`upgrade_to_newest_version`:
   Leverages the network from :doc:`build_network` to demonstrate an upgrade from
@@ -149,6 +158,15 @@ Private data enhancements
     chaincode based on the client organization collection membership without having
     to write specific chaincode logic.
 
+Node OU support
+---------------
+
+* :doc:`msp`:
+  Starting with v1.4.3, node OUs are now supported for admin and orderer identity
+  classifications (extending the existing Node OU support for clients and peers).
+  These "organizational units" allow organizations to further classify identities
+  into admins and orderers based on the OUs of their x509 certificates.
+
 Release notes
 =============
 
@@ -157,8 +175,18 @@ with a link to the full release change log.
 
 * `Fabric v1.4.0 release notes <https://github.com/hyperledger/fabric/releases/tag/v1.4.0>`_.
 * `Fabric v1.4.1 release notes <https://github.com/hyperledger/fabric/releases/tag/v1.4.1>`_.
+* `Fabric v1.4.2 release notes <https://github.com/hyperledger/fabric/releases/tag/v1.4.2>`_.
+* `Fabric v1.4.3 release notes <https://github.com/hyperledger/fabric/releases/tag/v1.4.3>`_.
+* `Fabric v1.4.4 release notes <https://github.com/hyperledger/fabric/releases/tag/v1.4.4>`_.
+* `Fabric v1.4.5 release notes <https://github.com/hyperledger/fabric/releases/tag/v1.4.5>`_.
+* `Fabric v1.4.6 release notes <https://github.com/hyperledger/fabric/releases/tag/v1.4.6>`_.
 * `Fabric CA v1.4.0 release notes <https://github.com/hyperledger/fabric-ca/releases/tag/v1.4.0>`_.
 * `Fabric CA v1.4.1 release notes <https://github.com/hyperledger/fabric-ca/releases/tag/v1.4.1>`_.
+* `Fabric CA v1.4.2 release notes <https://github.com/hyperledger/fabric-ca/releases/tag/v1.4.2>`_.
+* `Fabric CA v1.4.3 release notes <https://github.com/hyperledger/fabric-ca/releases/tag/v1.4.3>`_.
+* `Fabric CA v1.4.4 release notes <https://github.com/hyperledger/fabric-ca/releases/tag/v1.4.4>`_.
+* `Fabric CA v1.4.5 release notes <https://github.com/hyperledger/fabric-ca/releases/tag/v1.4.5>`_.
+* `Fabric CA v1.4.6 release notes <https://github.com/hyperledger/fabric-ca/releases/tag/v1.4.6>`_.
 
 .. Licensed under Creative Commons Attribution 4.0 International License
    https://creativecommons.org/licenses/by/4.0/

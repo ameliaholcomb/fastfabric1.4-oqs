@@ -22,12 +22,18 @@ import (
 	"github.com/hyperledger/fabric/core/deliverservice/mocks"
 	"github.com/hyperledger/fabric/gossip/api"
 	"github.com/hyperledger/fabric/gossip/common"
-	"github.com/hyperledger/fabric/msp/mgmt/testtools"
+	msptesttools "github.com/hyperledger/fabric/msp/mgmt/testtools"
 	"github.com/hyperledger/fabric/protos/orderer"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 )
+
+//go:generate counterfeiter -o mocks/connection_producer.go -fake-name ConnectionProducer . connectionProducer
+
+type connectionProducer interface {
+	comm.ConnectionProducer
+}
 
 func init() {
 	msptesttools.LoadMSPSetupForTesting()
@@ -97,19 +103,23 @@ func TestNewDeliverService(t *testing.T) {
 		}
 	}
 
-	connFactory := func(_ string) func(string) (*grpc.ClientConn, error) {
-		return func(endpoint string) (*grpc.ClientConn, error) {
+	connFactory := func(string, map[string]*comm.OrdererEndpoint) func(comm.EndpointCriteria) (*grpc.ClientConn, error) {
+		return func(endpoint comm.EndpointCriteria) (*grpc.ClientConn, error) {
 			lock.Lock()
 			defer lock.Unlock()
 			return newConnection(), nil
 		}
 	}
 	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{"a"},
 		Gossip:      gossipServiceAdapter,
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  abcf,
 		ConnFactory: connFactory,
+	}, ConnectionCriteria{
+		Organizations: []string{"org"},
+		OrdererEndpointsByOrg: map[string][]string{
+			"org": {"a"},
+		},
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, service.StartDeliverForChannel("TEST_CHAINID", &mocks.MockLedgerInfo{Height: 0}, func() {}))
@@ -146,11 +156,15 @@ func TestDeliverServiceRestart(t *testing.T) {
 	gossipServiceAdapter := &mocks.MockGossipServiceAdapter{GossipBlockDisseminations: make(chan uint64)}
 
 	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{"localhost:5611"},
 		Gossip:      gossipServiceAdapter,
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
+	}, ConnectionCriteria{
+		Organizations: []string{"org"},
+		OrdererEndpointsByOrg: map[string][]string{
+			"org": {"localhost:5611"},
+		},
 	})
 	assert.NoError(t, err)
 
@@ -192,11 +206,15 @@ func TestDeliverServiceFailover(t *testing.T) {
 	gossipServiceAdapter := &mocks.MockGossipServiceAdapter{GossipBlockDisseminations: make(chan uint64)}
 
 	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{"localhost:5612", "localhost:5613"},
 		Gossip:      gossipServiceAdapter,
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
+	}, ConnectionCriteria{
+		Organizations: []string{"org"},
+		OrdererEndpointsByOrg: map[string][]string{
+			"org": {"localhost:5612", "localhost:5613"},
+		},
 	})
 	assert.NoError(t, err)
 	li := &mocks.MockLedgerInfo{Height: uint64(100)}
@@ -251,49 +269,48 @@ func TestDeliverServiceFailover(t *testing.T) {
 }
 
 func TestDeliverServiceUpdateEndpoints(t *testing.T) {
-	// TODO: Add test case to check the endpoints update
-	// Case: Start service with given ordering service endpoint
-	// send a block, switch to new endpoint and send a new block
-	// Expected: Delivery service should be able to switch to
-	// updated endpoint and receive second block within timely manner.
-	defer ensureNoGoroutineLeak(t)()
+	connProd := &mocks.ConnectionProducer{}
+	testChannel := "test_channel"
 
-	os1 := mocks.NewOrderer(5612, t)
+	ds := &deliverServiceImpl{
+		connConfig: ConnectionCriteria{
+			Organizations: []string{"org1"},
+			OrdererEndpointsByOrg: map[string][]string{
+				"org1": {"localhost:5612"},
+			},
+			OrdererEndpointOverrides: map[string]*comm.OrdererEndpoint{
+				"localhost:5612": {
+					Address: "localhost:5614",
+				},
+			},
+		},
+		deliverClients: map[string]*deliverClient{
+			testChannel: {
+				bclient: &broadcastClient{
+					prod: connProd,
+				},
+			},
+		},
+	}
 
-	time.Sleep(time.Second)
-	gossipServiceAdapter := &mocks.MockGossipServiceAdapter{GossipBlockDisseminations: make(chan uint64)}
+	expectedEC := []comm.EndpointCriteria{
+		{Organizations: []string{"org1"}, Endpoint: "localhost:5614"},
+		{Organizations: []string{"org2"}, Endpoint: "localhost:5613"},
+	}
 
-	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{"localhost:5612"},
-		Gossip:      gossipServiceAdapter,
-		CryptoSvc:   &mockMCS{},
-		ABCFactory:  DefaultABCFactory,
-		ConnFactory: DefaultConnectionFactory,
-	})
-	defer service.Stop()
+	ds.UpdateEndpoints(
+		testChannel,
+		ConnectionCriteria{
+			Organizations: []string{"org1", "org2"},
+			OrdererEndpointsByOrg: map[string][]string{
+				"org1": {"localhost:5612"},
+				"org2": {"localhost:5613"},
+			},
+		},
+	)
+	assert.Equal(t, 1, connProd.UpdateEndpointsCallCount())
+	assert.Equal(t, expectedEC, connProd.UpdateEndpointsArgsForCall(0))
 
-	assert.NoError(t, err)
-	li := &mocks.MockLedgerInfo{Height: uint64(100)}
-	os1.SetNextExpectedSeek(uint64(100))
-
-	err = service.StartDeliverForChannel("TEST_CHAINID", li, func() {})
-	assert.NoError(t, err, "can't start delivery")
-
-	go os1.SendBlock(uint64(100))
-	assertBlockDissemination(100, gossipServiceAdapter.GossipBlockDisseminations, t)
-
-	os2 := mocks.NewOrderer(5613, t)
-	defer os2.Shutdown()
-	os2.SetNextExpectedSeek(uint64(101))
-
-	service.UpdateEndpoints("TEST_CHAINID", []string{"localhost:5613"})
-	// Shutdown old ordering service to make sure block will now come from
-	// updated ordering service
-	os1.Shutdown()
-
-	atomic.StoreUint64(&li.Height, uint64(101))
-	go os2.SendBlock(uint64(101))
-	assertBlockDissemination(101, gossipServiceAdapter.GossipBlockDisseminations, t)
 }
 
 func TestDeliverServiceServiceUnavailable(t *testing.T) {
@@ -316,11 +333,15 @@ func TestDeliverServiceServiceUnavailable(t *testing.T) {
 	gossipServiceAdapter := &mocks.MockGossipServiceAdapter{GossipBlockDisseminations: make(chan uint64)}
 
 	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{"localhost:5615", "localhost:5616"},
 		Gossip:      gossipServiceAdapter,
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
+	}, ConnectionCriteria{
+		Organizations: []string{"org"},
+		OrdererEndpointsByOrg: map[string][]string{
+			"org": {"localhost:5615", "localhost:5616"},
+		},
 	})
 	assert.NoError(t, err)
 	li := &mocks.MockLedgerInfo{Height: 100}
@@ -446,11 +467,15 @@ func TestDeliverServiceAbruptStop(t *testing.T) {
 	// it might be scheduled after the deliver client is stopped.
 	gossipServiceAdapter := &mocks.MockGossipServiceAdapter{GossipBlockDisseminations: make(chan uint64)}
 	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{"a"},
 		Gossip:      gossipServiceAdapter,
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
+	}, ConnectionCriteria{
+		Organizations: []string{"org"},
+		OrdererEndpointsByOrg: map[string][]string{
+			"org": {"a"},
+		},
 	})
 	assert.NoError(t, err)
 
@@ -469,11 +494,15 @@ func TestDeliverServiceShutdown(t *testing.T) {
 	gossipServiceAdapter := &mocks.MockGossipServiceAdapter{GossipBlockDisseminations: make(chan uint64)}
 
 	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{"localhost:5614"},
 		Gossip:      gossipServiceAdapter,
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
+	}, ConnectionCriteria{
+		Organizations: []string{"org"},
+		OrdererEndpointsByOrg: map[string][]string{
+			"org": {"localhost:5614"},
+		},
 	})
 	assert.NoError(t, err)
 
@@ -515,11 +544,15 @@ func TestDeliverServiceShutdownRespawn(t *testing.T) {
 	gossipServiceAdapter := &mocks.MockGossipServiceAdapter{GossipBlockDisseminations: make(chan uint64)}
 
 	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{"localhost:5614", "localhost:5615"},
 		Gossip:      gossipServiceAdapter,
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
+	}, ConnectionCriteria{
+		Organizations: []string{"org"},
+		OrdererEndpointsByOrg: map[string][]string{
+			"org": {"localhost:5614", "localhost:5615"},
+		},
 	})
 	assert.NoError(t, err)
 
@@ -568,11 +601,15 @@ func TestDeliverServiceDisconnectReconnect(t *testing.T) {
 	gossipServiceAdapter := &mocks.MockGossipServiceAdapter{GossipBlockDisseminations: make(chan uint64)}
 
 	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{"localhost:5614"},
 		Gossip:      gossipServiceAdapter,
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
+	}, ConnectionCriteria{
+		Organizations: []string{"org"},
+		OrdererEndpointsByOrg: map[string][]string{
+			"org": {"localhost:5614"},
+		},
 	})
 	assert.NoError(t, err)
 
@@ -609,64 +646,63 @@ func TestDeliverServiceDisconnectReconnect(t *testing.T) {
 }
 
 func TestDeliverServiceBadConfig(t *testing.T) {
+	notEmptyConnectionCriteria := ConnectionCriteria{
+		Organizations:         []string{"foo"},
+		OrdererEndpointsByOrg: map[string][]string{"foo": {"bar", "baz"}},
+	}
 	// Empty endpoints
 	service, err := NewDeliverService(&Config{
-		Endpoints:   []string{},
 		Gossip:      &mocks.MockGossipServiceAdapter{},
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
-	})
-	assert.Error(t, err)
+	}, ConnectionCriteria{})
+	assert.EqualError(t, err, "no endpoints specified")
 	assert.Nil(t, service)
 
 	// Nil gossip adapter
 	service, err = NewDeliverService(&Config{
-		Endpoints:   []string{"a"},
 		Gossip:      nil,
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
-	})
-	assert.Error(t, err)
+	}, notEmptyConnectionCriteria)
+	assert.EqualError(t, err, "no gossip provider specified")
 	assert.Nil(t, service)
 
 	// Nil crypto service
 	service, err = NewDeliverService(&Config{
-		Endpoints:   []string{"a"},
 		Gossip:      &mocks.MockGossipServiceAdapter{},
 		CryptoSvc:   nil,
 		ABCFactory:  DefaultABCFactory,
 		ConnFactory: DefaultConnectionFactory,
-	})
-	assert.Error(t, err)
+	}, notEmptyConnectionCriteria)
+	assert.EqualError(t, err, "no crypto service specified")
 	assert.Nil(t, service)
 
 	// Nil ABCFactory
 	service, err = NewDeliverService(&Config{
-		Endpoints:   []string{"a"},
 		Gossip:      &mocks.MockGossipServiceAdapter{},
 		CryptoSvc:   &mockMCS{},
 		ABCFactory:  nil,
 		ConnFactory: DefaultConnectionFactory,
-	})
-	assert.Error(t, err)
+	}, notEmptyConnectionCriteria)
+	assert.EqualError(t, err, "no AtomicBroadcast factory specified")
 	assert.Nil(t, service)
 
 	// Nil connFactory
 	service, err = NewDeliverService(&Config{
-		Endpoints:  []string{"a"},
 		Gossip:     &mocks.MockGossipServiceAdapter{},
 		CryptoSvc:  &mockMCS{},
 		ABCFactory: DefaultABCFactory,
-	})
-	assert.Error(t, err)
+	}, notEmptyConnectionCriteria)
+	assert.EqualError(t, err, "no connection factory specified")
 	assert.Nil(t, service)
 }
 
 func TestRetryPolicyOverflow(t *testing.T) {
-	connFactory := func(channelID string) func(endpoint string) (*grpc.ClientConn, error) {
-		return func(_ string) (*grpc.ClientConn, error) {
+	connFactory := func(channelID string, _ map[string]*comm.OrdererEndpoint) func(comm.EndpointCriteria) (*grpc.ClientConn, error) {
+		return func(_ comm.EndpointCriteria) (*grpc.ClientConn, error) {
 			return nil, errors.New("")
 		}
 	}
@@ -722,5 +758,86 @@ func waitForConnectionCount(orderer *mocks.Orderer, connCount int) bool {
 		case <-ctx.Done():
 			return false
 		}
+	}
+}
+
+func TestToEndpointCriteria(t *testing.T) {
+	for _, testCase := range []struct {
+		description string
+		input       ConnectionCriteria
+		expectedOut []comm.EndpointCriteria
+	}{
+		{
+			description: "globally defined endpoints",
+			input: ConnectionCriteria{
+				Organizations:    []string{"foo", "bar"},
+				OrdererEndpoints: []string{"a", "b", "c"},
+			},
+			expectedOut: []comm.EndpointCriteria{
+				{Organizations: []string{"foo", "bar"}, Endpoint: "a"},
+				{Organizations: []string{"foo", "bar"}, Endpoint: "b"},
+				{Organizations: []string{"foo", "bar"}, Endpoint: "c"},
+			},
+		},
+		{
+			description: "globally defined endpoints with overrides",
+			input: ConnectionCriteria{
+				Organizations:    []string{"foo", "bar"},
+				OrdererEndpoints: []string{"a", "b", "c"},
+				OrdererEndpointOverrides: map[string]*comm.OrdererEndpoint{
+					"b": {
+						Address: "d",
+					},
+				},
+			},
+			expectedOut: []comm.EndpointCriteria{
+				{Organizations: []string{"foo", "bar"}, Endpoint: "a"},
+				{Organizations: []string{"foo", "bar"}, Endpoint: "d"},
+				{Organizations: []string{"foo", "bar"}, Endpoint: "c"},
+			},
+		},
+		{
+			description: "per org defined endpoints",
+			input: ConnectionCriteria{
+				Organizations: []string{"foo", "bar"},
+				// Even if OrdererEndpoints are defined, the OrdererEndpointsByOrg take precedence.
+				OrdererEndpoints: []string{"a", "b", "c"},
+				OrdererEndpointsByOrg: map[string][]string{
+					"foo": {"a", "b"},
+					"bar": {"c"},
+				},
+			},
+			expectedOut: []comm.EndpointCriteria{
+				{Organizations: []string{"foo"}, Endpoint: "a"},
+				{Organizations: []string{"foo"}, Endpoint: "b"},
+				{Organizations: []string{"bar"}, Endpoint: "c"},
+			},
+		},
+		{
+			description: "per org defined endpoints with overrides",
+			input: ConnectionCriteria{
+				Organizations: []string{"foo", "bar"},
+				// Even if OrdererEndpoints are defined, the OrdererEndpointsByOrg take precedence.
+				OrdererEndpoints: []string{"a", "b", "c"},
+				OrdererEndpointsByOrg: map[string][]string{
+					"foo": {"a", "b"},
+					"bar": {"c"},
+				},
+				OrdererEndpointOverrides: map[string]*comm.OrdererEndpoint{
+					"b": {
+						Address: "d",
+					},
+				},
+			},
+			expectedOut: []comm.EndpointCriteria{
+				{Organizations: []string{"foo"}, Endpoint: "a"},
+				{Organizations: []string{"foo"}, Endpoint: "d"},
+				{Organizations: []string{"bar"}, Endpoint: "c"},
+			},
+		},
+	} {
+		t.Run(testCase.description, func(t *testing.T) {
+			assert.Equal(t, testCase.expectedOut, testCase.input.toEndpointCriteria())
+		})
 	}
 }

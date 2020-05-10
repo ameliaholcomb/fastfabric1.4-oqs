@@ -1043,6 +1043,83 @@ var _ = Describe("Handler", func() {
 		})
 	})
 
+	Describe("HandleGetPrivateDataHash", func() {
+		var (
+			incomingMessage  *pb.ChaincodeMessage
+			request          *pb.GetState
+			expectedResponse *pb.ChaincodeMessage
+		)
+
+		BeforeEach(func() {
+			request = &pb.GetState{
+				Collection: "collection-name",
+				Key:        "get-pvtdata-hash-key",
+			}
+			payload, err := proto.Marshal(request)
+			Expect(err).NotTo(HaveOccurred())
+
+			incomingMessage = &pb.ChaincodeMessage{
+				Type:      pb.ChaincodeMessage_GET_PRIVATE_DATA_HASH,
+				Payload:   payload,
+				Txid:      "tx-id",
+				ChannelId: "channel-id",
+			}
+
+			expectedResponse = &pb.ChaincodeMessage{
+				Type:      pb.ChaincodeMessage_RESPONSE,
+				Payload:   []byte("get-private-data-hash-response"),
+				Txid:      "tx-id",
+				ChannelId: "channel-id",
+			}
+			fakeTxSimulator.GetPrivateDataHashReturns([]byte("get-private-data-hash-response"), nil)
+		})
+
+		It("calls GetPrivateDataHash on the transaction simulator and receives expected response", func() {
+			response, err := handler.HandleGetPrivateDataHash(incomingMessage, txContext)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(fakeTxSimulator.GetPrivateDataHashCallCount()).To(Equal(1))
+			ccname, collection, key := fakeTxSimulator.GetPrivateDataHashArgsForCall(0)
+			Expect(ccname).To(Equal("cc-instance-name"))
+			Expect(collection).To(Equal("collection-name"))
+			Expect(key).To(Equal("get-pvtdata-hash-key"))
+			Expect(response).To(Equal(expectedResponse))
+		})
+
+		Context("when unmarshalling the request fails", func() {
+			BeforeEach(func() {
+				incomingMessage.Payload = []byte("this-is-a-bogus-payload")
+			})
+
+			It("returns an error", func() {
+				_, err := handler.HandleGetPrivateDataHash(incomingMessage, txContext)
+				Expect(err).To(MatchError("unmarshal failed: proto: can't skip unknown wire type 4"))
+			})
+		})
+
+		Context("and GetPrivateDataHash fails due to ledger error", func() {
+			BeforeEach(func() {
+				fakeTxSimulator.GetPrivateDataHashReturns(nil, errors.New("french fries"))
+			})
+
+			It("returns the error from GetPrivateData", func() {
+				_, err := handler.HandleGetPrivateDataHash(incomingMessage, txContext)
+				Expect(err).To(MatchError("french fries"))
+			})
+		})
+
+		Context("and GetPrivateData fails due to Init transaction", func() {
+			BeforeEach(func() {
+				txContext.IsInitTransaction = true
+			})
+
+			It("returns the error from errorIfInitTransaction", func() {
+				_, err := handler.HandleGetPrivateDataHash(incomingMessage, txContext)
+				Expect(err).To(MatchError("private data APIs are not allowed in chaincode Init()"))
+			})
+		})
+	})
+
 	Describe("HandleGetStateMetadata", func() {
 		var (
 			incomingMessage  *pb.ChaincodeMessage
@@ -2506,6 +2583,23 @@ var _ = Describe("Handler", func() {
 			})
 		})
 
+		Context("when the chaincode stream terminates", func() {
+			It("returns an error", func() {
+				streamDoneChan := make(chan struct{})
+				chaincode.SetStreamDoneChan(handler, streamDoneChan)
+
+				errCh := make(chan error, 1)
+				go func() {
+					_, err := handler.Execute(txParams, cccid, incomingMessage, time.Hour)
+					errCh <- err
+				}()
+				Consistently(errCh).ShouldNot(Receive())
+
+				close(streamDoneChan)
+				Eventually(errCh).Should(Receive(MatchError("chaincode stream terminated")))
+			})
+		})
+
 		Context("when execute times out", func() {
 			It("returns an error", func() {
 				errCh := make(chan error, 1)
@@ -2692,6 +2786,22 @@ var _ = Describe("Handler", func() {
 			Eventually(fakeChatStream.RecvCallCount).Should(Equal(100))
 		})
 
+		It("manages the stream done channel", func() {
+			releaseChan := make(chan struct{})
+			fakeChatStream.RecvStub = func() (*pb.ChaincodeMessage, error) {
+				<-releaseChan
+				return nil, errors.New("cc-went-away")
+			}
+			go handler.ProcessStream(fakeChatStream)
+			Eventually(fakeChatStream.RecvCallCount).Should(Equal(1))
+
+			streamDoneChan := chaincode.StreamDone(handler)
+			Consistently(streamDoneChan).ShouldNot(Receive())
+
+			close(releaseChan)
+			Eventually(streamDoneChan).Should(BeClosed())
+		})
+
 		Context("when receive fails with an io.EOF", func() {
 			BeforeEach(func() {
 				fakeChatStream.RecvReturns(nil, io.EOF)
@@ -2794,8 +2904,7 @@ var _ = Describe("Handler", func() {
 			var (
 				cccid           *ccprovider.CCContext
 				incomingMessage *pb.ChaincodeMessage
-
-				recvChan chan *pb.ChaincodeMessage
+				recvChan        chan *pb.ChaincodeMessage
 			)
 
 			BeforeEach(func() {
