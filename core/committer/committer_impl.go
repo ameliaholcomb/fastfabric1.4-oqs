@@ -57,11 +57,13 @@ type LedgerCommitter struct {
 	blocks     map[uint64]struct {
 		*ledger.BlockAndPvtData
 		e chan error
+		c *ledger.CommitOptions
 	}
 	commitHeight uint64
 	ready        chan struct {
 		*ledger.BlockAndPvtData
 		e chan error
+		c *ledger.CommitOptions
 	}
 	done chan bool
 }
@@ -87,11 +89,13 @@ func NewLedgerCommitterReactive(l PeerLedgerSupport, eventer ConfigBlockEventer)
 		blocks: map[uint64]struct {
 			*ledger.BlockAndPvtData
 			e chan error
+			c *ledger.CommitOptions
 		}{},
 		commitHeight: 1,
 		ready: make(chan struct {
 			*ledger.BlockAndPvtData
 			e chan error
+			c *ledger.CommitOptions
 		}, 10000),
 		done: make(chan bool, 1),
 	}
@@ -132,7 +136,7 @@ func (lc *LedgerCommitter) CommitWithPvtData(blockAndPvtData *ledger.BlockAndPvt
 	}{
 		BlockAndPvtData: blockAndPvtData,
 		e:               errChan,
-		c:				 commitOpts,
+		c:               commitOpts,
 	}
 	lc.FillQueue()
 

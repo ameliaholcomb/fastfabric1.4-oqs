@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/confighistory"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/bookkeeping"
@@ -131,7 +132,7 @@ func (provider *Provider) Create(genesisBlock *common.Block) (ledger.PeerLedger,
 	}
 	if err := lgr.CommitWithPvtData(&ledger.BlockAndPvtData{
 		Block: genBlock,
-		},
+	},
 		&ledger.CommitOptions{},
 	); err != nil {
 		lgr.Close()

@@ -152,7 +152,7 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 			if blockNum > 1 && (config.IsEndorser || config.IsStorage) {
 				continue
 			}
-			if err := b.mcs.VerifyBlock(gossipcommon.ChainID(b.chainID), blockNum, marshaledBlock); err != nil {
+			if err := b.mcs.VerifyBlock(gossipcommon.ChainID(b.chainID), blockNum, block); err != nil {
 				logger.Errorf("[%s] Error verifying block with sequence number %d, due to %s", b.chainID, blockNum, err)
 				continue
 			}

@@ -195,7 +195,12 @@ func (c *coordinator) StoreBlock(block *cached.Block, privateDataSets util.PvtDa
 	}
 	if exist {
 		commitOpts := &ledger.CommitOptions{FetchPvtDataFromLedger: true}
-		return c.CommitWithPvtData(blockAndPvtData, commitOpts)
+
+		errChan := c.CommitWithPvtData(blockAndPvtData, commitOpts)
+		err = <-errChan
+		if err != nil {
+			return err
+		}
 	}
 
 	listMissingStart := time.Now()
@@ -713,7 +718,7 @@ func (c *coordinator) listMissingPrivateData(block *cached.Block, ownedRWsets ma
 	}
 
 	storePvtDataOfInvalidTx := c.Support.CapabilityProvider.Capabilities().StorePvtDataOfInvalidTx()
-	txList, err := forEachTxn(block,storePvtDataOfInvalidTx, txsFilter, bi.inspectTransaction)
+	txList, err := forEachTxn(storePvtDataOfInvalidTx, block, txsFilter, bi.inspectTransaction)
 	if err != nil {
 		return nil, err
 	}
@@ -899,39 +904,39 @@ func (c *coordinator) GetPvtDataAndBlockByNum(seqNum uint64, peerAuthInfo common
 	seqs2Namespaces := aggregatedCollections(make(map[seqAndDataModel]map[string][]*rwset.CollectionPvtReadWriteSet))
 	data := blockData(blockAndPvtData.Block.Data.Data)
 	storePvtDataOfInvalidTx := c.Support.CapabilityProvider.Capabilities().StorePvtDataOfInvalidTx()
-	forEachTxn(blockAndPvtData.Block, storePvtDataOfInvalidTx, make(txValidationFlags, len(data)), func(seqInBlock uint64, chdr *common.ChannelHeader, txRWSet *rwsetutil.TxRwSet, _ []*peer.Endorsement) error {
+	forEachTxn(storePvtDataOfInvalidTx, blockAndPvtData.Block, make(txValidationFlags, len(data)), func(seqInBlock uint64, chdr *common.ChannelHeader, txRWSet *cached.TxRwSet, _ []*peer.Endorsement) error {
 		item, exists := blockAndPvtData.PvtData[seqInBlock]
 		if !exists {
 			return nil
 		}
 
-			for _, ns := range item.WriteSet.NsPvtRwset {
-				for _, col := range ns.CollectionPvtRwset {
-					cc := common.CollectionCriteria{
-						Channel:    chdr.ChannelId,
-						TxId:       chdr.TxId,
-						Namespace:  ns.Namespace,
-						Collection: col.CollectionName,
-					}
-					sp, err := c.CollectionStore.RetrieveCollectionAccessPolicy(cc)
-					if err != nil {
-						logger.Warning("Failed obtaining policy for", cc, ":", err)
-						continue
-					}
-					isAuthorized := sp.AccessFilter()
-					if isAuthorized == nil {
-						logger.Warning("Failed obtaining filter for", cc)
-						continue
-					}
-					if !isAuthorized(peerAuthInfo) {
-						logger.Debug("Skipping", cc, "because peer isn't authorized")
-						continue
-					}
-					seqs2Namespaces.addCollection(seqInBlock, item.WriteSet.DataModel, ns.Namespace, col)
+		for _, ns := range item.WriteSet.NsPvtRwset {
+			for _, col := range ns.CollectionPvtRwset {
+				cc := common.CollectionCriteria{
+					Channel:    chdr.ChannelId,
+					TxId:       chdr.TxId,
+					Namespace:  ns.Namespace,
+					Collection: col.CollectionName,
 				}
+				sp, err := c.CollectionStore.RetrieveCollectionAccessPolicy(cc)
+				if err != nil {
+					logger.Warning("Failed obtaining policy for", cc, ":", err)
+					continue
+				}
+				isAuthorized := sp.AccessFilter()
+				if isAuthorized == nil {
+					logger.Warning("Failed obtaining filter for", cc)
+					continue
+				}
+				if !isAuthorized(peerAuthInfo) {
+					logger.Debug("Skipping", cc, "because peer isn't authorized")
+					continue
+				}
+				seqs2Namespaces.addCollection(seqInBlock, item.WriteSet.DataModel, ns.Namespace, col)
 			}
-			return nil
-		})
+		}
+		return nil
+	})
 
 	return blockAndPvtData.Block, seqs2Namespaces.asPrivateData(), nil
 }
