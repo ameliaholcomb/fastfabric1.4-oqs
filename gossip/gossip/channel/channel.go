@@ -603,7 +603,7 @@ func (gc *gossipChannel) HandleMessage(msg proto.ReceivedMessage) {
 			if !gc.blockMsgStore.CheckValid(msg.GetGossipMessage()) {
 				return
 			}
-			if !(config.IsEndorser || config.IsStorage) {
+			if config.IsFastPeer {
 				if !gc.verifyBlock(m.GossipMessage, msg.GetConnectionInfo().ID) {
 					gc.logger.Warning("Failed verifying block", m.GetDataMsg().Payload.Data.Header.Number)
 					return

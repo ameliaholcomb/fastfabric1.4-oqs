@@ -149,7 +149,7 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 			statusCounter = 0
 			block := cached.WrapBlock(t.Block)
 			blockNum := block.Header.Number
-			if blockNum > 1 && (config.IsEndorser || config.IsStorage) {
+			if blockNum > 1 && !config.IsFastPeer {
 				continue
 			}
 			if err := b.mcs.VerifyBlock(gossipcommon.ChainID(b.chainID), blockNum, block); err != nil {
@@ -167,7 +167,7 @@ func (b *blocksProviderImpl) DeliverBlocks() {
 				logger.Warningf("Block [%d] received from ordering service wasn't added to payload buffer: %v", blockNum, err)
 			}
 
-			if !(blockNum > 1 && (config.IsEndorser || config.IsStorage)) {
+			if blockNum > 1 && config.IsFastPeer {
 				gossipChan := gossip.GetQueue(blockNum)
 				go func(c chan *gossip_proto.Payload) {
 					// Gossip messages with other nodes

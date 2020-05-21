@@ -161,7 +161,7 @@ func preprocessProtoBlock(txMgr txmgr.TxMgr,
 		}
 		if txRWSet != nil {
 			txStatInfo.NumCollections = txRWSet.NumCollections()
-			if !(config.IsEndorser || config.IsStorage) {
+			if config.IsFastPeer {
 				if err := validateWriteset(txRWSet, validateKVFunc); err != nil {
 					logger.Warningf("Channel [%s]: Block [%d] Transaction index [%d] TxId [%s]"+
 						" marked as invalid. Reason code [%s]",
