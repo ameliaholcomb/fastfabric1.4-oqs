@@ -154,10 +154,12 @@ func serve(args []string) error {
 	}
 
 	if ffconfig.IsEndorser {
+		ffconfig.IsFastPeer = false
 		logger.Info("starting as endorser")
 	}
 
 	if ffconfig.IsStorage {
+		ffconfig.IsFastPeer = false
 		logger.Info("starting as storage server")
 		remote.StartServer(storageAddress)
 	}

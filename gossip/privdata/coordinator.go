@@ -173,7 +173,7 @@ func (c *coordinator) StoreBlock(block *cached.Block, privateDataSets util.PvtDa
 
 	logger.Debugf("[%s] Validating block [%d]", c.ChainID, block.Header.Number)
 
-	if !(config.IsEndorser || config.IsStorage) || block.Header.Number <= 1 {
+	if config.IsFastPeer || block.Header.Number <= 1 {
 		validationStart := time.Now()
 		err := c.Validator.Validate(block)
 		c.reportValidationDuration(time.Since(validationStart))
