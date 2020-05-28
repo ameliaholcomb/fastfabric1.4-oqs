@@ -34,7 +34,7 @@ fi
 if [[ -d ./crypto-config ]]; then rm -r ./crypto-config; fi
 if [[ -d ./channel-artifacts ]]; then rm -r ./channel-artifacts; fi
 mkdir channel-artifacts
-./bin/cryptogen generate --config=crypto-config.yaml
-./bin/configtxgen -configPath ./ -outputBlock ./channel-artifacts/genesis.block -profile OneOrgOrdererGenesis -channelID ${CHANNEL}-system-channel
-./bin/configtxgen -configPath ./ -outputCreateChannelTx ./channel-artifacts/channel.tx -profile OneOrgChannel -channelID ${CHANNEL}
-./bin/configtxgen -configPath ./ -outputAnchorPeersUpdate ./channel-artifacts/anchor_peer.tx -profile OneOrgChannel -asOrg Org1MSP -channelID ${CHANNEL}
+$FABRIC_ROOT/.build/bin/cryptogen generate --config=crypto-config.yaml
+$FABRIC_ROOT/.build/bin/configtxgen -configPath ./ -outputBlock ./channel-artifacts/genesis.block -profile OneOrgOrdererGenesis -channelID ${CHANNEL}-system-channel
+$FABRIC_ROOT/.build/bin/configtxgen -configPath ./ -outputCreateChannelTx ./channel-artifacts/channel.tx -profile OneOrgChannel -channelID ${CHANNEL}
+$FABRIC_ROOT/.build/bin/configtxgen -configPath ./ -outputAnchorPeersUpdate ./channel-artifacts/anchor_peer.tx -profile OneOrgChannel -asOrg Org1MSP -channelID ${CHANNEL}
