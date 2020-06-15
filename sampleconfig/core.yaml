@@ -196,6 +196,10 @@ peer:
             reconcileSleepInterval: 1m
             # reconciliationEnabled is a flag that indicates whether private data reconciliation is enable or not.
             reconciliationEnabled: true
+            # skipPullingInvalidTransactionsDuringCommit is a flag that indicates whether pulling of invalid
+            # transaction's private data from other peers need to be skipped during the commit time and pulled
+            # only through reconciler.
+            skipPullingInvalidTransactionsDuringCommit: false
 
         # Gossip state transfer related configuration
         state:
@@ -313,15 +317,26 @@ peer:
 
     # Delivery service related config
     deliveryclient:
-        # It sets the total time the delivery service may spend in reconnection
-        # attempts until its retry logic gives up and returns an error
+        # The total time to spend retrying connections to ordering nodes
+        # before giving up and returning an error.
         reconnectTotalTimeThreshold: 3600s
 
-        # It sets the delivery service <-> ordering service node connection timeout
+        # The connection timeout when connecting to ordering service nodes.
         connTimeout: 3s
 
-        # It sets the delivery service maximal delay between consecutive retries
+        # The maximum delay between consecutive connection retry attempts to
+        # ordering nodes.
         reConnectBackoffThreshold: 3600s
+
+        # A list of orderer endpoint addresses which should be overridden
+        # when found in channel configurations.
+        addressOverrides:
+        #  - from:
+        #    to:
+        #    caCertsFile:
+        #  - from:
+        #    to:
+        #    caCertsFile:
 
     # Type for the local MSP - by default it's of type bccsp
     localMspType: bccsp
@@ -505,7 +520,7 @@ chaincode:
         # tools added for java shim layer packaging.
         # This image is packed with shim layer libraries that are necessary
         # for Java chaincode runtime.
-        runtime: $(DOCKER_NS)/fabric-javaenv:$(ARCH)-$(PROJECT_VERSION)
+        runtime: $(DOCKER_NS)/fabric-javaenv:$(TWO_DIGIT_VERSION)
 
     node:
         # need node.js engine at runtime, currently available in baseimage

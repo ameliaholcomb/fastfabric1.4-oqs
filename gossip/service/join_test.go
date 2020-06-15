@@ -104,6 +104,10 @@ func (g *gossipMock) IdentityInfo() api.PeerIdentitySet {
 	panic("implement me")
 }
 
+func (*gossipMock) IsInMyOrg(member discovery.NetworkMember) bool {
+	panic("implement me")
+}
+
 func (*gossipMock) Stop() {
 	panic("implement me")
 }
@@ -132,6 +136,14 @@ type configMock struct {
 	orgs2AppOrgs map[string]channelconfig.ApplicationOrg
 }
 
+func (c *configMock) OrdererAddressesByOrgs() map[string][]string {
+	return nil
+}
+
+func (c *configMock) OrdererOrgs() []string {
+	return nil
+}
+
 func (c *configMock) OrdererAddresses() []string {
 	return []string{"localhost:7050"}
 }
@@ -140,7 +152,7 @@ func (*configMock) ChainID() string {
 	return "A"
 }
 
-func (c *configMock) Organizations() map[string]channelconfig.ApplicationOrg {
+func (c *configMock) ApplicationOrgs() ApplicationOrgs {
 	return c.orgs2AppOrgs
 }
 

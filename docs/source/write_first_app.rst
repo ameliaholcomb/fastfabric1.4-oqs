@@ -34,9 +34,8 @@ We’ll go through three principle steps:
   .. image:: images/AppConceptsOverview.png
 
   **2. Learning about a sample smart contract, FabCar.**
-  We use a smart contract written in **JavaScript**. We’ll
-  inspect the smart contract to learn about the transactions within them, and
-  how they are used by applications to query and update the ledger.
+  We’ll inspect the smart contract to learn about the transactions within them,
+  and how they are used by applications to query and update the ledger.
 
   **3. Develop a sample application which uses FabCar.** Our application will
   use the FabCar smart contract to query and update car assets on the ledger.
@@ -92,9 +91,16 @@ Launch the network
 .. note:: This next section requires you to be in the ``fabcar``
           subdirectory within your local clone of the ``fabric-samples`` repo.
 
+          This tutorial demonstrates the JavaScript versions of the ``FabCar``
+          smart contract and application, but the ``fabric-samples`` repo also
+          contains Java and TypeScript versions of this sample. To try the
+          Java or TypeScript versions, change the ``javascript`` argument
+          for ``./startFabric.sh`` below to either ``java`` or ``typescript``
+          and follow the instructions written to the terminal.
+
 Launch your network using the ``startFabric.sh`` shell script. This command will
 spin up a blockchain network comprising peers, orderers, certificate
-authorities and more.  It will also install and instantiate a javascript version
+authorities and more.  It will also install and instantiate a JavaScript version
 of the ``FabCar`` smart contract which will be used by our application to access
 the ledger. We'll learn more about these components as we go through the
 tutorial.
@@ -157,7 +163,7 @@ Enrolling the admin user
 .. note:: The following two sections involve communication with the Certificate
           Authority. You may find it useful to stream the CA logs when running
           the upcoming programs by opening a new terminal shell and running
-          ``docker logs -f ca.example.com``.
+          ``docker logs -f ca_peerOrg1``.
 
 When we created the network, an admin user --- literally called ``admin`` ---
 was created as the **registrar** for the certificate authority (CA). Our first
@@ -265,11 +271,11 @@ The application connects to the network using a gateway:
 This code creates a new gateway and then uses it to connect the application to
 the network. ``ccp`` describes the network that the gateway will access with the
 identity ``user1`` from ``wallet``. See how the ``ccp`` has been loaded from
-``../../basic-network/connection.json`` and parsed as a JSON file:
+``../../first-network/connection-org1.json`` and parsed as a JSON file:
 
 .. code:: bash
 
-  const ccpPath = path.resolve(__dirname, '..', '..', 'basic-network', 'connection.json');
+  const ccpPath = path.resolve(__dirname, '..', '..', 'first-network', 'connection-org1.json');
   const ccpJSON = fs.readFileSync(ccpPath, 'utf8');
   const ccp = JSON.parse(ccpJSON);
 
@@ -354,7 +360,7 @@ Below is a representation of how an application would call different
 transactions in a smart contract. Each transaction uses a broad set of APIs such
 as ``getStateByRange`` to interact with the ledger. You can read more about
 these APIs in `detail
-<https://fabric-shim.github.io/master/index.html?redirect=true>`_.
+<https://hyperledger.github.io/fabric-chaincode-node/>`_.
 
 .. image:: images/RunningtheSample.png
 

@@ -521,6 +521,14 @@ func (stub *ChaincodeStub) GetPrivateData(collection string, key string) ([]byte
 	return stub.handler.handleGetState(collection, key, stub.ChannelId, stub.TxID)
 }
 
+// GetPrivateDataHash documentation can be found in interfaces.go
+func (stub *ChaincodeStub) GetPrivateDataHash(collection string, key string) ([]byte, error) {
+	if collection == "" {
+		return nil, fmt.Errorf("collection must not be an empty string")
+	}
+	return stub.handler.handleGetPrivateDataHash(collection, key, stub.ChannelId, stub.TxID)
+}
+
 // PutPrivateData documentation can be found in interfaces.go
 func (stub *ChaincodeStub) PutPrivateData(collection string, key string, value []byte) error {
 	if collection == "" {
@@ -758,7 +766,7 @@ func validateCompositeKeyAttribute(str string) error {
 
 //To ensure that simple keys do not go into composite key namespace,
 //we validate simplekey to check whether the key starts with 0x00 (which
-//is the namespace for compositeKey). This helps in avoding simple/composite
+//is the namespace for compositeKey). This helps in avoiding simple/composite
 //key collisions.
 func validateSimpleKeys(simpleKeys ...string) error {
 	for _, key := range simpleKeys {

@@ -27,7 +27,7 @@ import (
 type TxMgr interface {
 	NewQueryExecutor(txid string) (ledger.QueryExecutor, error)
 	NewTxSimulator(txid string) (ledger.TxSimulator, error)
-	ValidateAndPrepare(blockAndPvtdata *ledger.BlockAndPvtData, doMVCCValidation bool) ([]*TxStatInfo, error)
+	ValidateAndPrepare(blockAndPvtdata *ledger.BlockAndPvtData, doMVCCValidation bool) ([]*TxStatInfo, []byte, error)
 	RemoveStaleAndCommitPvtDataOfOldBlocks(blocksPvtData map[uint64][]*ledger.TxPvtData) error
 	GetLastSavepoint() (*version.Height, error)
 	ShouldRecover(lastAvailableBlock uint64) (bool, uint64, error)
@@ -35,6 +35,7 @@ type TxMgr interface {
 	Commit() error
 	Rollback()
 	Shutdown()
+	Name() string
 }
 
 // TxStatInfo encapsulates information about a transaction

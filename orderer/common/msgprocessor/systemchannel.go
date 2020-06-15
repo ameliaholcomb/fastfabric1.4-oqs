@@ -17,6 +17,7 @@ import (
 	cb "github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protos/utils"
 
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/pkg/errors"
 )
 
@@ -42,18 +43,22 @@ func NewSystemChannel(support StandardChannelSupport, templator ChannelConfigTem
 }
 
 // CreateSystemChannelFilters creates the set of filters for the ordering system chain.
-func CreateSystemChannelFilters(chainCreator ChainCreator, ledgerResources channelconfig.Resources) *RuleSet {
-	ordererConfig, ok := ledgerResources.OrdererConfig()
-	if !ok {
-		logger.Panicf("Cannot create system channel filters without orderer config")
-	}
-	return NewRuleSet([]Rule{
+//
+// In maintenance mode, require the signature of /Channel/Orderer/Writers. This will filter out configuration
+// changes that are not related to consensus-type migration (e.g on /Channel/Application).
+func CreateSystemChannelFilters(chainCreator ChainCreator, ledgerResources channelconfig.Resources, config localconfig.TopLevel) *RuleSet {
+	rules := []Rule{
 		EmptyRejectRule,
-		NewExpirationRejectRule(ledgerResources),
-		NewSizeFilter(ordererConfig),
-		NewSigFilter(policies.ChannelWriters, ledgerResources),
+		NewSizeFilter(ledgerResources),
+		NewSigFilter(policies.ChannelWriters, policies.ChannelOrdererWriters, ledgerResources),
 		NewSystemChannelFilter(ledgerResources, chainCreator),
-	})
+	}
+
+	if !config.General.Authentication.NoExpirationChecks {
+		expirationRule := NewExpirationRejectRule(ledgerResources)
+		rules = append(rules[:2], append([]Rule{expirationRule}, rules[2:]...)...)
+	}
+	return NewRuleSet(rules)
 }
 
 // ProcessNormalMsg handles normal messages, rejecting them if they are not bound for the system channel ID
@@ -120,7 +125,7 @@ func (s *SystemChannel) ProcessConfigUpdateMsg(envConfigUpdate *cb.Envelope) (co
 	// just constructed is not too large for our consenter.  It additionally reapplies the signature
 	// check, which although not strictly necessary, is a good sanity check, in case the orderer
 	// has not been configured with the right cert material.  The additional overhead of the signature
-	// check is negligable, as this is the channel creation path and not the normal path.
+	// check is negligible, as this is the channel creation path and not the normal path.
 	err = s.StandardChannel.filters.Apply(wrappedOrdererTransaction)
 	if err != nil {
 		return nil, 0, err

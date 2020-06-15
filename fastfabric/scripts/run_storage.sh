@@ -14,6 +14,6 @@ export CORE_PEER_GOSSIP_USELEADERELECTION=false
 export CORE_PEER_GOSSIP_ORGLEADER=false
 
 rm /var/hyperledger/production/* -r # clean up data from previous runs
-(cd ${FABRIC_ROOT}/peer/ && go install)
+(cd ${FABRIC_ROOT} && make peer)
 
 peer node start -s --storageAddr $p_addr:10000

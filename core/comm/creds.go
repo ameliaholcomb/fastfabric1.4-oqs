@@ -9,8 +9,10 @@ package comm
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net"
+	"sync"
 
 	"github.com/hyperledger/fabric/common/flogging"
 	"google.golang.org/grpc/credentials"
@@ -22,6 +24,8 @@ var (
 	OverrrideHostnameNotSupportedError = errors.New(
 		"core/comm: OverrideServerName is " +
 			"not supported")
+	ServerHandshakeNotImplementedError = errors.New("core/comm: server handshakes are not implemented with clientCreds")
+
 	MissingServerConfigError = errors.New(
 		"core/comm: `serverConfig` cannot be nil")
 	// alpnProtoStr are the specified application level protocols for gRPC.
@@ -31,15 +35,15 @@ var (
 // NewServerTransportCredentials returns a new initialized
 // grpc/credentials.TransportCredentials
 func NewServerTransportCredentials(
-	serverConfig *tls.Config,
+	serverConfig *TLSConfig,
 	logger *flogging.FabricLogger) credentials.TransportCredentials {
 
 	// NOTE: unlike the default grpc/credentials implementation, we do not
 	// clone the tls.Config which allows us to update it dynamically
-	serverConfig.NextProtos = alpnProtoStr
+	serverConfig.config.NextProtos = alpnProtoStr
 	// override TLS version and ensure it is 1.2
-	serverConfig.MinVersion = tls.VersionTLS12
-	serverConfig.MaxVersion = tls.VersionTLS12
+	serverConfig.config.MinVersion = tls.VersionTLS12
+	serverConfig.config.MaxVersion = tls.VersionTLS12
 	return &serverCreds{
 		serverConfig: serverConfig,
 		logger:       logger}
@@ -47,8 +51,44 @@ func NewServerTransportCredentials(
 
 // serverCreds is an implementation of grpc/credentials.TransportCredentials.
 type serverCreds struct {
-	serverConfig *tls.Config
+	serverConfig *TLSConfig
 	logger       *flogging.FabricLogger
+}
+
+type TLSConfig struct {
+	config *tls.Config
+	lock   sync.RWMutex
+}
+
+func NewTLSConfig(config *tls.Config) *TLSConfig {
+	return &TLSConfig{
+		config: config,
+	}
+}
+
+func (t *TLSConfig) Config() tls.Config {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	if t.config != nil {
+		return *t.config.Clone()
+	}
+
+	return tls.Config{}
+}
+
+func (t *TLSConfig) AddClientRootCA(cert *x509.Certificate) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	t.config.ClientCAs.AddCert(cert)
+}
+
+func (t *TLSConfig) SetClientCAs(certPool *x509.CertPool) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	t.config.ClientCAs = certPool
 }
 
 // ClientHandShake is not implemented for `serverCreds`.
@@ -59,7 +99,9 @@ func (sc *serverCreds) ClientHandshake(context.Context,
 
 // ServerHandshake does the authentication handshake for servers.
 func (sc *serverCreds) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	conn := tls.Server(rawConn, sc.serverConfig)
+	serverConfig := sc.serverConfig.Config()
+
+	conn := tls.Server(rawConn, &serverConfig)
 	if err := conn.Handshake(); err != nil {
 		if sc.logger != nil {
 			sc.logger.With("remote address",
@@ -80,7 +122,9 @@ func (sc *serverCreds) Info() credentials.ProtocolInfo {
 
 // Clone makes a copy of this TransportCredentials.
 func (sc *serverCreds) Clone() credentials.TransportCredentials {
-	creds := NewServerTransportCredentials(sc.serverConfig, sc.logger)
+	config := sc.serverConfig.Config()
+	serverConfig := NewTLSConfig(&config)
+	creds := NewServerTransportCredentials(serverConfig, sc.logger)
 	return creds
 }
 
@@ -88,4 +132,38 @@ func (sc *serverCreds) Clone() credentials.TransportCredentials {
 // on the returned certificates from the server.
 func (sc *serverCreds) OverrideServerName(string) error {
 	return OverrrideHostnameNotSupportedError
+}
+
+type DynamicClientCredentials struct {
+	TLSConfig  *tls.Config
+	TLSOptions []TLSOption
+}
+
+func (dtc *DynamicClientCredentials) latestConfig() *tls.Config {
+	tlsConfigCopy := dtc.TLSConfig.Clone()
+	for _, tlsOption := range dtc.TLSOptions {
+		tlsOption(tlsConfigCopy)
+	}
+	return tlsConfigCopy
+}
+
+func (dtc *DynamicClientCredentials) ClientHandshake(ctx context.Context, authority string, rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	return credentials.NewTLS(dtc.latestConfig()).ClientHandshake(ctx, authority, rawConn)
+}
+
+func (dtc *DynamicClientCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	return nil, nil, ServerHandshakeNotImplementedError
+}
+
+func (dtc *DynamicClientCredentials) Info() credentials.ProtocolInfo {
+	return credentials.NewTLS(dtc.latestConfig()).Info()
+}
+
+func (dtc *DynamicClientCredentials) Clone() credentials.TransportCredentials {
+	return credentials.NewTLS(dtc.latestConfig())
+}
+
+func (dtc *DynamicClientCredentials) OverrideServerName(name string) error {
+	dtc.TLSConfig.ServerName = name
+	return nil
 }

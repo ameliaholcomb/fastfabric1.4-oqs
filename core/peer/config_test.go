@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package peer
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -133,9 +134,10 @@ func TestGetServerConfig(t *testing.T) {
 
 	// good config without TLS
 	viper.Set("peer.tls.enabled", false)
+	viper.Set("peer.connectiontimeout", "7s")
 	sc, _ := GetServerConfig()
-	assert.Equal(t, false, sc.SecOpts.UseTLS,
-		"ServerConfig.SecOpts.UseTLS should be false")
+	assert.Equal(t, false, sc.SecOpts.UseTLS, "ServerConfig.SecOpts.UseTLS should be false")
+	assert.Equal(t, sc.ConnectionTimeout, 7*time.Second, "ServerConfig.ConnectionTimeout should be 7 seconds")
 
 	// keepalive options
 	assert.Equal(t, comm.DefaultKeepaliveOptions, sc.KaOpts,
@@ -316,4 +318,53 @@ func TestGetClientCertificate(t *testing.T) {
 	cert, err = GetClientCertificate()
 	assert.NoError(t, err)
 	assert.Equal(t, expected, cert)
+}
+
+func TestGetOrdererAddressOverrides(t *testing.T) {
+	conf := `
+  peer:
+    deliveryclient:
+      addressOverrides:
+        - from: myaddress0
+          to: youraddress0
+        - from: myaddress1
+          to: youraddress1
+          caCertsFile: testdata/missing.pem
+        - from: myaddress2
+          to: youraddress2
+          caCertsFile: testdata/Org1-cert.pem`
+
+	viper.SetConfigType("yaml")
+	err := viper.ReadConfig(bytes.NewBuffer([]byte(conf)))
+	if err != nil {
+		t.Fatalf("Failed to read test config: %s", err)
+	}
+
+	expected := map[string]*comm.OrdererEndpoint{
+		"myaddress0": {
+			Address: "youraddress0",
+		},
+		"myaddress2": {
+			Address: "youraddress2",
+			PEMs: []byte(`-----BEGIN CERTIFICATE-----
+MIIB8TCCAZegAwIBAgIQU59imQ+xl+FmwuiFyUgFezAKBggqhkjOPQQDAjBYMQsw
+CQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQGA1UEBxMNU2FuIEZy
+YW5jaXNjbzENMAsGA1UEChMET3JnMTENMAsGA1UEAxMET3JnMTAeFw0xNzA1MDgw
+OTMwMzRaFw0yNzA1MDYwOTMwMzRaMFgxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpD
+YWxpZm9ybmlhMRYwFAYDVQQHEw1TYW4gRnJhbmNpc2NvMQ0wCwYDVQQKEwRPcmcx
+MQ0wCwYDVQQDEwRPcmcxMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFkpP6EqE
+87ghFi25UWLvgPatxDiYKYaVSPvpo/XDJ0+9uUmK/C2r5Bvvxx1t8eTROwN77tEK
+r+jbJIxX3ZYQMKNDMEEwDgYDVR0PAQH/BAQDAgGmMA8GA1UdJQQIMAYGBFUdJQAw
+DwYDVR0TAQH/BAUwAwEB/zANBgNVHQ4EBgQEAQIDBDAKBggqhkjOPQQDAgNIADBF
+AiEA1Xkrpq+wrmfVVuY12dJfMQlSx+v0Q3cYce9BE1i2mioCIAzqyduK/lHPI81b
+nWiU9JF9dRQ69dEV9dxd/gzamfFU
+-----END CERTIFICATE-----
+`),
+		},
+	}
+	overrides, err := GetOrdererAddressOverrides()
+	if err != nil {
+		t.Fatalf("Failed to get overrides: %s", err)
+	}
+	assert.Equal(t, expected, overrides)
 }

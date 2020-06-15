@@ -132,6 +132,15 @@ func (r *Replicator) ReplicateChains() []string {
 			if err != nil {
 				r.Logger.Panicf("Failed to create a ledger for channel %s: %v", channel.ChannelName, err)
 			}
+
+			if channel.GenesisBlock == nil {
+				if ledger.Height() == 0 {
+					r.Logger.Panicf("Expecting channel %s to at least contain genesis block, but it doesn't", channel.ChannelName)
+				}
+
+				continue
+			}
+
 			gb, err := ChannelCreationBlockToGenesisBlock(channel.GenesisBlock)
 			if err != nil {
 				r.Logger.Panicf("Failed converting channel creation block for channel %s to genesis block: %v",
@@ -348,22 +357,24 @@ func BlockPullerFromConfigBlock(conf PullerConfig, block *common.Block, verifier
 		return nil, errors.New("nil block")
 	}
 
-	endpointconfig, err := EndpointconfigFromConfigBlock(block)
+	endpoints, err := EndpointconfigFromConfigBlock(block)
 	if err != nil {
 		return nil, err
 	}
 
+	clientConf := comm.ClientConfig{
+		Timeout: conf.Timeout,
+		SecOpts: &comm.SecureOptions{
+			Certificate:       conf.TLSCert,
+			Key:               conf.TLSKey,
+			RequireClientCert: true,
+			UseTLS:            true,
+		},
+	}
+
 	dialer := &StandardDialer{
-		Dialer: NewTLSPinningDialer(comm.ClientConfig{
-			Timeout: conf.Timeout,
-			SecOpts: &comm.SecureOptions{
-				ServerRootCAs:     endpointconfig.TLSRootCAs,
-				Certificate:       conf.TLSCert,
-				Key:               conf.TLSKey,
-				RequireClientCert: true,
-				UseTLS:            true,
-			},
-		})}
+		ClientConfig: clientConf.Clone(),
+	}
 
 	tlsCertAsDER, _ := pem.Decode(conf.TLSCert)
 	if tlsCertAsDER == nil {
@@ -382,7 +393,7 @@ func BlockPullerFromConfigBlock(conf PullerConfig, block *common.Block, verifier
 			return VerifyBlocks(blocks, verifier)
 		},
 		MaxTotalBufferBytes: conf.MaxTotalBufferBytes,
-		Endpoints:           endpointconfig.Endpoints,
+		Endpoints:           endpoints,
 		RetryTimeout:        RetryTimeout,
 		FetchTimeout:        conf.Timeout,
 		Channel:             conf.Channel,

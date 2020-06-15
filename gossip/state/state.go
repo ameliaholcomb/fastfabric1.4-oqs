@@ -272,8 +272,8 @@ func NewGossipStateProvider(chainID string, services *ServicesMediator, ledger l
 		stateMetrics: stateMetrics,
 	}
 
-	logger.Infof("Updating metadata information, "+
-		"current ledger sequence is at = %d, next expected block is = %d", height-1, s.payloads.Next())
+	logger.Infof("Updating metadata information for channel %s, "+
+		"current ledger sequence is at = %d, next expected block is = %d", chainID, height-1, s.payloads.Next())
 	logger.Debug("Updating gossip ledger height to", height)
 	services.UpdateLedgerHeight(height, common2.ChainID(s.chainID))
 
@@ -506,7 +506,7 @@ func (s *GossipStateProviderImpl) handleStateResponse(msg proto.ReceivedMessage)
 		seqNum := payload.Data.Header.Number
 		logger.Debugf("Received payload with sequence number %d.", seqNum)
 		block := cached.WrapBlock(payload.Data)
-		if !(config.IsEndorser || config.IsStorage) {
+		if config.IsFastPeer {
 			if err := s.mediator.VerifyBlock(common2.ChainID(s.chainID), seqNum, block); err != nil {
 				err = errors.WithStack(err)
 				logger.Warningf("Error verifying block with sequence number %d, due to %+v", seqNum, err)

@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
 	"github.com/hyperledger/fabric/common/metrics"
 	"github.com/hyperledger/fabric/orderer/common/blockcutter"
+	"github.com/hyperledger/fabric/orderer/common/localconfig"
 	"github.com/hyperledger/fabric/orderer/common/msgprocessor"
 	"github.com/hyperledger/fabric/orderer/consensus"
 	cb "github.com/hyperledger/fabric/protos/common"
@@ -91,9 +92,9 @@ type ledgerResources struct {
 
 // Registrar serves as a point of access and control for the individual channel resources.
 type Registrar struct {
-	lock   sync.RWMutex
-	chains map[string]*ChainSupport
-
+	lock               sync.RWMutex
+	chains             map[string]*ChainSupport
+	config             localconfig.TopLevel
 	consenters         map[string]consensus.Consenter
 	ledgerFactory      blockledger.Factory
 	signer             crypto.LocalSigner
@@ -125,9 +126,14 @@ func configTx(reader blockledger.Reader) *cb.Envelope {
 }
 
 // NewRegistrar produces an instance of a *Registrar.
-func NewRegistrar(ledgerFactory blockledger.Factory,
-	signer crypto.LocalSigner, metricsProvider metrics.Provider, callbacks ...channelconfig.BundleActor) *Registrar {
+func NewRegistrar(
+	config localconfig.TopLevel,
+	ledgerFactory blockledger.Factory,
+	signer crypto.LocalSigner,
+	metricsProvider metrics.Provider,
+	callbacks ...channelconfig.BundleActor) *Registrar {
 	r := &Registrar{
+		config:             config,
 		chains:             make(map[string]*ChainSupport),
 		ledgerFactory:      ledgerFactory,
 		signer:             signer,
@@ -141,10 +147,6 @@ func NewRegistrar(ledgerFactory blockledger.Factory,
 func (r *Registrar) Initialize(consenters map[string]consensus.Consenter) {
 	r.consenters = consenters
 	existingChains := r.ledgerFactory.ChainIDs()
-
-	//TODO To initialize after consensus-type migration, it is necessary to identify the system channel and create it first,
-	// determining the correct consensus-type and the state of the migration. This is needed for recovery, in case the
-	// migration process crashes before it is committed.
 
 	for _, chainID := range existingChains {
 		rl, err := r.ledgerFactory.GetOrCreate(chainID)
@@ -171,7 +173,7 @@ func (r *Registrar) Initialize(consenters map[string]consensus.Consenter) {
 				r.blockcutterMetrics,
 			)
 			r.templator = msgprocessor.NewDefaultTemplator(chain)
-			chain.Processor = msgprocessor.NewSystemChannel(chain, r.templator, msgprocessor.CreateSystemChannelFilters(r, chain))
+			chain.Processor = msgprocessor.NewSystemChannel(chain, r.templator, msgprocessor.CreateSystemChannelFilters(r, chain, r.config))
 
 			// Retrieve genesis block to log its hash. See FAB-5450 for the purpose
 			iter, pos := rl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Oldest{Oldest: &ab.SeekOldest{}}})
@@ -228,10 +230,6 @@ func (r *Registrar) BroadcastChannelSupport(msg *cb.Envelope) (*cb.ChannelHeader
 	cs := r.GetChain(chdr.ChannelId)
 	// New channel creation
 	if cs == nil {
-		// Prevent channel creation during consensus-type migration
-		if r.ConsensusMigrationPending() {
-			return chdr, true, nil, errors.New("cannot create channel because consensus-type migration is pending")
-		}
 		cs = r.systemChannel
 	}
 
@@ -245,68 +243,6 @@ func (r *Registrar) BroadcastChannelSupport(msg *cb.Envelope) (*cb.ChannelHeader
 	}
 
 	return chdr, isConfig, cs, nil
-}
-
-// ConsensusMigrationPending checks whether consensus-type migration is started on the system channel.
-func (r *Registrar) ConsensusMigrationPending() bool {
-	//Note: systemChannel.MigrationStatus().IsPending() is thread safe, takes a mutex
-	return r.systemChannel.MigrationStatus().IsPending()
-}
-
-// ConsensusMigrationStart checks whether consensus-type migration had started,
-// and then marks all standard channels as started.
-func (r *Registrar) ConsensusMigrationStart(context uint64) error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
-	for id, chain := range r.chains {
-		if id != r.systemChannel.ChainID() && chain.MigrationStatus().IsPending() {
-			return errors.Errorf("cannot start new consensus-type migration because standard channel %s, still pending", id)
-		}
-	}
-
-	for _, chain := range r.chains {
-		chain.MigrationStatus().SetStateContext(ab.ConsensusType_MIG_STATE_START, context)
-	}
-	logger.Debugf("Consensus-type migration: all standard channels marked as started, context=%d", context)
-
-	return nil
-}
-
-// ConsensusMigrationCommit checks pre-conditions and commits the consensus-type migration.
-func (r *Registrar) ConsensusMigrationCommit() error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
-	sysState, sysContext := r.systemChannel.MigrationStatus().StateContext()
-	if !(sysState == ab.ConsensusType_MIG_STATE_START && sysContext > 0) {
-		return errors.Errorf("cannot commit consensus-type migration because system channel (%s): state=%s, context=%d (expect: state=%s, context>0)",
-			r.systemChannel.ChainID(), sysState, sysContext, ab.ConsensusType_MIG_STATE_START)
-	}
-
-	for id, chain := range r.chains {
-		st, ctx := chain.MigrationStatus().StateContext()
-		if id == r.systemChannel.ChainID() {
-			continue
-		}
-		if st != ab.ConsensusType_MIG_STATE_CONTEXT {
-			return errors.Errorf("cannot commit consensus-type migration because standard channel %s, still pending, state=%s", id, st)
-		}
-		if ctx != sysContext {
-			return errors.Errorf("cannot commit consensus-type migration because standard channel %s, bad context=%d, expected=%d", id, ctx, sysContext)
-		}
-	}
-
-	r.systemChannel.MigrationStatus().SetStateContext(ab.ConsensusType_MIG_STATE_COMMIT, sysContext)
-	logger.Debugf("Consensus-type migration: system channel marked as committed, context=%d", sysContext)
-
-	return nil
-}
-
-// ConsensusMigrationAbort checks pre-conditions and aborts the consensus-type migration.
-func (r *Registrar) ConsensusMigrationAbort() (err error) {
-	//TODO implement the consensus-type migration abort path
-	return fmt.Errorf("Not implemented yet")
 }
 
 // GetChain retrieves the chain support for a chain if it exists.

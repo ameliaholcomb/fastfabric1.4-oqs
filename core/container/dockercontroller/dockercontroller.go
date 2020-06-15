@@ -53,6 +53,8 @@ type DockerVM struct {
 	BuildMetrics *BuildMetrics
 }
 
+//go:generate counterfeiter -o mock/dockerclient.go --fake-name DockerClient . dockerClient
+
 // dockerClient represents a docker client
 type dockerClient interface {
 	// CreateContainer creates a docker container, returns an error in case of failure
@@ -198,12 +200,14 @@ func (vm *DockerVM) deployImage(client dockerClient, ccid ccintf.CCID, reader io
 		return err
 	}
 
+	networkMode := getDockerHostConfig().NetworkMode
 	outputbuf := bytes.NewBuffer(nil)
 	opts := docker.BuildImageOptions{
 		Name:         id,
 		Pull:         viper.GetBool("chaincode.pull"),
 		InputStream:  reader,
 		OutputStream: outputbuf,
+		NetworkMode:  networkMode,
 	}
 
 	startTime := time.Now()

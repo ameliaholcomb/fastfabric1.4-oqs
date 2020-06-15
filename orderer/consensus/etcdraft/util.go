@@ -59,7 +59,7 @@ func (mc *MembershipChanges) Rotated() bool {
 }
 
 // EndpointconfigFromFromSupport extracts TLS CA certificates and endpoints from the ConsenterSupport
-func EndpointconfigFromFromSupport(support consensus.ConsenterSupport) (*cluster.EndpointConfig, error) {
+func EndpointconfigFromFromSupport(support consensus.ConsenterSupport) ([]cluster.EndpointCriteria, error) {
 	lastConfigBlock, err := lastConfigBlockFromSupport(support)
 	if err != nil {
 		return nil, err
@@ -93,28 +93,22 @@ func newBlockPuller(support consensus.ConsenterSupport,
 		return cluster.VerifyBlocks(blocks, support)
 	}
 
-	secureConfig, err := baseDialer.ClientConfig()
-	if err != nil {
-		return nil, err
-	}
-	secureConfig.AsyncConnect = false
 	stdDialer := &cluster.StandardDialer{
-		Dialer: cluster.NewTLSPinningDialer(secureConfig),
+		ClientConfig: baseDialer.ClientConfig.Clone(),
 	}
+	stdDialer.ClientConfig.AsyncConnect = false
+	stdDialer.ClientConfig.SecOpts.VerifyCertificate = nil
 
 	// Extract the TLS CA certs and endpoints from the configuration,
-	endpointConfig, err := EndpointconfigFromFromSupport(support)
+	endpoints, err := EndpointconfigFromFromSupport(support)
 	if err != nil {
 		return nil, err
 	}
-	// and overwrite them.
-	secureConfig.SecOpts.ServerRootCAs = endpointConfig.TLSRootCAs
-	stdDialer.Dialer.SetConfig(secureConfig)
 
-	der, _ := pem.Decode(secureConfig.SecOpts.Certificate)
+	der, _ := pem.Decode(stdDialer.ClientConfig.SecOpts.Certificate)
 	if der == nil {
 		return nil, errors.Errorf("client certificate isn't in PEM format: %v",
-			string(secureConfig.SecOpts.Certificate))
+			string(stdDialer.ClientConfig.SecOpts.Certificate))
 	}
 
 	bp := &cluster.BlockPuller{
@@ -123,7 +117,7 @@ func newBlockPuller(support consensus.ConsenterSupport,
 		RetryTimeout:        clusterConfig.ReplicationRetryTimeout,
 		MaxTotalBufferBytes: clusterConfig.ReplicationBufferSize,
 		FetchTimeout:        clusterConfig.ReplicationPullTimeout,
-		Endpoints:           endpointConfig.Endpoints,
+		Endpoints:           endpoints,
 		Signer:              support,
 		TLSCert:             der.Bytes,
 		Channel:             support.ChainID(),
@@ -392,6 +386,10 @@ func CheckConfigMetadata(metadata *etcdraft.ConfigMetadata) error {
 		return errors.Errorf("nil Raft config metadata")
 	}
 
+	if metadata.Options == nil {
+		return errors.Errorf("nil Raft config metadata options")
+	}
+
 	if metadata.Options.HeartbeatTick == 0 ||
 		metadata.Options.ElectionTick == 0 ||
 		metadata.Options.MaxInflightBlocks == 0 {
@@ -403,7 +401,7 @@ func CheckConfigMetadata(metadata *etcdraft.ConfigMetadata) error {
 	// check Raft options
 	if metadata.Options.ElectionTick <= metadata.Options.HeartbeatTick {
 		return errors.Errorf("ElectionTick (%d) must be greater than HeartbeatTick (%d)",
-			metadata.Options.HeartbeatTick, metadata.Options.HeartbeatTick)
+			metadata.Options.ElectionTick, metadata.Options.HeartbeatTick)
 	}
 
 	if d, err := time.ParseDuration(metadata.Options.TickInterval); err != nil {

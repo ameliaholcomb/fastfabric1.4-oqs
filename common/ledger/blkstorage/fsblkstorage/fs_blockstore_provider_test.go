@@ -26,7 +26,7 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/util"
 	"github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protos/peer"
-	"github.com/hyperledger/fabric/protos/utils"
+	putil "github.com/hyperledger/fabric/protos/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -78,8 +78,8 @@ func checkBlocks(t *testing.T, expectedBlocks []*cached.Block, store blkstorage.
 
 		for txNum := 0; txNum < len(block.Data.Data); txNum++ {
 			txEnvBytes := block.Data.Data[txNum]
-			txEnv, _ := utils.GetEnvelopeFromBlock(txEnvBytes)
-			txid, err := extractTxID(txEnvBytes)
+			txEnv, _ := putil.GetEnvelopeFromBlock(txEnvBytes)
+			txid, err := putil.GetOrComputeTxIDFromEnvelope(txEnvBytes)
 			assert.NoError(t, err)
 
 			retrievedBlock, _ := store.RetrieveBlockByTxID(txid)

@@ -43,11 +43,14 @@ Organizations:{{ range .PeerOrgs }}
     Admins:
       Type: Signature
       Rule: OR('{{.MSPID}}.admin')
+  OrdererEndpoints:{{ range $w.OrderersInOrg .Name }}
+  - 127.0.0.1:{{ $w.OrdererPort . "Listen" }}
+  {{- end }}
 {{ end }}
 
 Channel: &ChannelDefaults
   Capabilities:
-    V1_3: true
+    V1_4_3: true
   Policies:
     Readers:
       Type: ImplicitMeta
@@ -65,9 +68,6 @@ Profiles:{{ range .Profiles }}
     {{- if .Orderers }}
     Orderer:
       OrdererType: {{ $w.Consensus.Type }}
-      Addresses:{{ range .Orderers }}{{ with $w.Orderer . }}
-      - 127.0.0.1:{{ $w.OrdererPort . "Listen" }}
-      {{- end }}{{ end }}
       BatchTimeout: 1s
       BatchSize:
         MaxMessageCount: 1
@@ -75,9 +75,6 @@ Profiles:{{ range .Profiles }}
         PreferredMaxBytes: 512 KB
       Capabilities:
         V1_1: true
-      {{- if $w.OrdererCap.V2_0 }}
-        V2_0: true
-      {{- end }}
 
       {{- if eq $w.Consensus.Type "kafka" }}
       Kafka:
@@ -92,7 +89,7 @@ Profiles:{{ range .Profiles }}
           SnapshotIntervalSize: 1 KB
         Consenters:{{ range .Orderers }}{{ with $w.Orderer . }}
         - Host: 127.0.0.1
-          Port: {{ $w.OrdererPort . "Listen" }}
+          Port: {{ $w.OrdererPort . "Cluster" }}
           ClientTLSCert: {{ $w.OrdererLocalCryptoDir . "tls" }}/server.crt
           ServerTLSCert: {{ $w.OrdererLocalCryptoDir . "tls" }}/server.crt
         {{- end }}{{- end }}
