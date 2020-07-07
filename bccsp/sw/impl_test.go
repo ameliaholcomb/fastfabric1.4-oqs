@@ -28,6 +28,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"fmt"
+	oqs "github.com/hyperledger/fabric/external_crypto"
+	"github.com/stretchr/testify/require"
 	"hash"
 	"io/ioutil"
 	"math/big"
@@ -1951,6 +1953,261 @@ func TestOQSVerify(t *testing.T) {
 	}
 }
 
+func TestKeyImportFromX509ECDSAHybridOQSPublicKey(t *testing.T) {
+	t.Parallel()
+	provider, _, cleanup := currentTestConfig.Provider(t)
+	defer cleanup()
+
+	// Generate an ECDSA key
+	k, err := provider.KeyGen(&bccsp.ECDSAKeyGenOpts{Temporary: false})
+	require.NoError(t, err)
+
+	// Generate an OQS key and save it in the keystore
+	qK, err := provider.KeyGen(&bccsp.OQSKeyGenOpts{Temporary: false})
+	require.NoError(t, err)
+	// Cheat to get access to the underlying raw key,
+	// because we need it to create the X509 certificate extension
+	pubqK, err := qK.PublicKey()
+	require.NoError(t, err)
+	bytes, err := pubqK.Bytes()
+	require.NoError(t, err)
+	rawqK, err := oqs.ParsePKIXPublicKey(bytes)
+	require.NoError(t, err)
+	qkExtensions, err := oqs.BuildAltPublicKeyExtensions(rawqK)
+	require.NoError(t, err)
+
+	// Generate a self-signed certificate
+	testExtKeyUsage := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
+	testUnknownExtKeyUsage := []asn1.ObjectIdentifier{[]int{1, 2, 3}, []int{2, 59, 1}}
+	extraExtensionData := []byte("extra extension")
+	commonName := "test.example.com"
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName:   commonName,
+			Organization: []string{"Σ Acme Co"},
+			Country:      []string{"US"},
+			ExtraNames: []pkix.AttributeTypeAndValue{
+				{
+					Type:  []int{2, 5, 4, 42},
+					Value: "Gopher",
+				},
+				// This should override the Country, above.
+				{
+					Type:  []int{2, 5, 4, 6},
+					Value: "NL",
+				},
+			},
+		},
+		NotBefore: time.Now().Add(-1 * time.Hour),
+		NotAfter:  time.Now().Add(1 * time.Hour),
+
+		SignatureAlgorithm: x509.ECDSAWithSHA256,
+
+		SubjectKeyId: []byte{1, 2, 3, 4},
+		KeyUsage:     x509.KeyUsageCertSign,
+
+		ExtKeyUsage:        testExtKeyUsage,
+		UnknownExtKeyUsage: testUnknownExtKeyUsage,
+
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+
+		OCSPServer:            []string{"http://ocurrentBCCSP.example.com"},
+		IssuingCertificateURL: []string{"http://crt.example.com/ca1.crt"},
+
+		DNSNames:       []string{"test.example.com"},
+		EmailAddresses: []string{"gopher@golang.org"},
+		IPAddresses:    []net.IP{net.IPv4(127, 0, 0, 1).To4(), net.ParseIP("2001:4860:0:2001::68")},
+
+		PolicyIdentifiers:   []asn1.ObjectIdentifier{[]int{1, 2, 3}},
+		PermittedDNSDomains: []string{".example.com", "example.com"},
+
+		CRLDistributionPoints: []string{"http://crl1.example.com/ca1.crl", "http://crl2.example.com/ca1.crl"},
+
+		ExtraExtensions: []pkix.Extension{
+			{
+				Id:    []int{1, 2, 3, 4},
+				Value: extraExtensionData,
+			},
+		},
+	}
+	template.ExtraExtensions = append(template.ExtraExtensions, qkExtensions...)
+
+	classicalSigner, err := signer.New(provider, k, nil)
+	require.NoError(t, err)
+
+	// Export the public key
+	pk, err := k.PublicKey()
+	require.NoError(t, err)
+
+	pkRaw, err := pk.Bytes()
+	require.NoError(t, err)
+
+	pub, err := utils.DERToPublicKey(pkRaw)
+	require.NoError(t, err)
+
+	certRaw, err := x509.CreateCertificate(rand.Reader, &template, &template, pub, classicalSigner)
+	require.NoError(t, err)
+
+	cert, err := utils.DERToX509Certificate(certRaw)
+	require.NoError(t, err)
+
+	// Import the certificate's classical public key
+	pk2, err := provider.KeyImport(cert, &bccsp.X509PublicKeyImportOpts{Temporary: false})
+	require.NoError(t, err)
+	require.NotNil(t, pk2)
+
+	// Import the certificate's alternate (quantum) public key
+	qPk2, err := provider.KeyImport(cert, &bccsp.X509AltPublicKeyImportOpts{Temporary: false})
+	require.NoError(t, err)
+	require.NotNil(t, qPk2)
+
+	// Sign and verify with the imported classical public key
+	// TODO(amelia): We can't really check that a hybrid signer works, because hybrid verification is implemented one
+	// level up, at the msp/signingidentity level. Alas. This will have to be good enough for now.
+	msg := []byte("Hello World")
+
+	digest, err := provider.Hash(msg, &bccsp.SHAOpts{})
+	if err != nil {
+		t.Fatalf("Failed computing HASH [%s]", err)
+	}
+
+	signature, err := provider.Sign(k, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed generating ECDSA signature [%s]", err)
+	}
+
+	valid, err := provider.Verify(pk2, signature, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed verifying ECDSA signature [%s]", err)
+	}
+	if !valid {
+		t.Fatal("Failed verifying ECDSA signature. Signature not valid.")
+	}
+
+}
+
+// KeyImport from an ordinary X509 certificate (aka, with no alternate key specified) should also succeed.
+// In this case, KeyImport() for the alternate key should return nil with no error.
+func TestKeyImportFromX509ECDSAHybridOQSPublicKeyBackwardsCompatible(t *testing.T) {
+	t.Parallel()
+	provider, _, cleanup := currentTestConfig.Provider(t)
+	defer cleanup()
+
+	// Generate an ECDSA key
+	k, err := provider.KeyGen(&bccsp.ECDSAKeyGenOpts{Temporary: false})
+	require.NoError(t, err)
+
+	// Generate a self-signed certificate
+	testExtKeyUsage := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
+	testUnknownExtKeyUsage := []asn1.ObjectIdentifier{[]int{1, 2, 3}, []int{2, 59, 1}}
+	extraExtensionData := []byte("extra extension")
+	commonName := "test.example.com"
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName:   commonName,
+			Organization: []string{"Σ Acme Co"},
+			Country:      []string{"US"},
+			ExtraNames: []pkix.AttributeTypeAndValue{
+				{
+					Type:  []int{2, 5, 4, 42},
+					Value: "Gopher",
+				},
+				// This should override the Country, above.
+				{
+					Type:  []int{2, 5, 4, 6},
+					Value: "NL",
+				},
+			},
+		},
+		NotBefore: time.Now().Add(-1 * time.Hour),
+		NotAfter:  time.Now().Add(1 * time.Hour),
+
+		SignatureAlgorithm: x509.ECDSAWithSHA256,
+
+		SubjectKeyId: []byte{1, 2, 3, 4},
+		KeyUsage:     x509.KeyUsageCertSign,
+
+		ExtKeyUsage:        testExtKeyUsage,
+		UnknownExtKeyUsage: testUnknownExtKeyUsage,
+
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+
+		OCSPServer:            []string{"http://ocurrentBCCSP.example.com"},
+		IssuingCertificateURL: []string{"http://crt.example.com/ca1.crt"},
+
+		DNSNames:       []string{"test.example.com"},
+		EmailAddresses: []string{"gopher@golang.org"},
+		IPAddresses:    []net.IP{net.IPv4(127, 0, 0, 1).To4(), net.ParseIP("2001:4860:0:2001::68")},
+
+		PolicyIdentifiers:   []asn1.ObjectIdentifier{[]int{1, 2, 3}},
+		PermittedDNSDomains: []string{".example.com", "example.com"},
+
+		CRLDistributionPoints: []string{"http://crl1.example.com/ca1.crl", "http://crl2.example.com/ca1.crl"},
+
+		ExtraExtensions: []pkix.Extension{
+			{
+				Id:    []int{1, 2, 3, 4},
+				Value: extraExtensionData,
+			},
+		},
+	}
+
+	classicalSigner, err := signer.New(provider, k, nil)
+	require.NoError(t, err)
+
+	// Export the public key
+	pk, err := k.PublicKey()
+	require.NoError(t, err)
+
+	pkRaw, err := pk.Bytes()
+	require.NoError(t, err)
+
+	pub, err := utils.DERToPublicKey(pkRaw)
+	require.NoError(t, err)
+
+	certRaw, err := x509.CreateCertificate(rand.Reader, &template, &template, pub, classicalSigner)
+	require.NoError(t, err)
+
+	cert, err := utils.DERToX509Certificate(certRaw)
+	require.NoError(t, err)
+
+	// Import the certificate's classical public key
+	pk2, err := provider.KeyImport(cert, &bccsp.X509PublicKeyImportOpts{Temporary: false})
+	require.NoError(t, err)
+	require.NotNil(t, pk2)
+
+	// Import the certificate's alternate (quantum) public key
+	// This should succeed, but return a nil alternate key because one was not found in the certificate.
+	qPk, err := provider.KeyImport(cert, &bccsp.X509AltPublicKeyImportOpts{Temporary: false})
+	require.NoError(t, err)
+	require.Nil(t, qPk)
+
+	msg := []byte("Hello World")
+
+	digest, err := provider.Hash(msg, &bccsp.SHAOpts{})
+	if err != nil {
+		t.Fatalf("Failed computing HASH [%s]", err)
+	}
+
+	signature, err := provider.Sign(k, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed generating ECDSA signature [%s]", err)
+	}
+
+	valid, err := provider.Verify(pk2, signature, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed verifying ECDSA signature [%s]", err)
+	}
+	if !valid {
+		t.Fatal("Failed verifying ECDSA signature. Signature not valid.")
+	}
+
+}
+
 func TestKeyImportFromX509RSAPublicKey(t *testing.T) {
 	t.Parallel()
 	provider, _, cleanup := currentTestConfig.Provider(t)
@@ -2140,3 +2397,4 @@ func getCryptoHashIndex(t *testing.T) crypto.Hash {
 
 	return crypto.SHA3_256
 }
+
