@@ -162,22 +162,26 @@ func (msp *bccspmsp) getCertFromPem(idBytes []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-func (msp *bccspmsp) getIdentityFromConf(idBytes []byte) (Identity, bccsp.Key, error) {
+func (msp *bccspmsp) getIdentityFromConf(idBytes []byte) (mspId Identity, pK bccsp.Key, qPK bccsp.Key, err error) {
 	// get a cert
 	cert, err := msp.getCertFromPem(idBytes)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// get the public key in the right format
 	certPubK, err := msp.bccsp.KeyImport(cert, &bccsp.X509PublicKeyImportOpts{Temporary: true})
 
-	mspId, err := newIdentity(cert, certPubK, nil, msp)
+	// also attempt to get an alternate (aka, post-quantum) key
+	// If not present, this will return nil with no error.
+	certQPubK, err := msp.bccsp.KeyImport(cert, &bccsp.X509AltPublicKeyImportOpts{Temporary: true})
+
+	mspId, err = newIdentity(cert, certPubK, certQPubK, msp)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return mspId, certPubK, nil
+	return mspId, certPubK, certQPubK, nil
 }
 
 func (msp *bccspmsp) getSigningIdentityFromConf(sidInfo *m.SigningIdentityInfo) (SigningIdentity, error) {
@@ -186,7 +190,7 @@ func (msp *bccspmsp) getSigningIdentityFromConf(sidInfo *m.SigningIdentityInfo) 
 	}
 
 	// Extract the public part of the identity
-	idPub, pubKey, err := msp.getIdentityFromConf(sidInfo.PublicSigner)
+	idPub, pubKey, qPubKey, err := msp.getIdentityFromConf(sidInfo.PublicSigner)
 	if err != nil {
 		return nil, err
 	}
@@ -207,35 +211,22 @@ func (msp *bccspmsp) getSigningIdentityFromConf(sidInfo *m.SigningIdentityInfo) 
 		}
 	}
 
-	// If the SigningIdentityInfo also has quantum-safe key information,
-	// extract it to create a hybrid signer.
-	var quantumPrivKey bccsp.Key = nil
-	var quantumPubKey bccsp.Key = nil
-	if sidInfo.QuantumPublicSigner != nil {
-		// Extract the quantum public key of the signer.
-		// TODO(amelia): This function is terribly ugly! Please refactor into something like getIdentityFromConf.
-		qPem := sidInfo.QuantumPublicSigner
-		keyMaterial, _ := pem.Decode(qPem)
-		if keyMaterial == nil {
-			return nil, errors.New("Unable to decode PEM for quantum public key")
-		}
-		quantumPubKey, err = msp.bccsp.KeyImport(keyMaterial.Bytes, &bccsp.OQSPublicKeyImportOpts{Temporary: true})
-		if err != nil {
-			return nil, fmt.Errorf("Unable to parse quantum public key: [%s]", err)
-		}
-		quantumPrivKey, err = msp.bccsp.GetKey(quantumPubKey.SKI())
+	// If a quantum-safe public key was provided, extract the private key information and create a hybrid signer.
+	var qPrivKey bccsp.Key = nil
+	if qPubKey != nil {
+		qPrivKey, err = msp.bccsp.GetKey(qPubKey.SKI())
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	// get the peer signer
-	peerSigner, err := signer.New(msp.bccsp, privKey, quantumPrivKey)
+	peerSigner, err := signer.New(msp.bccsp, privKey, qPrivKey)
 	if err != nil {
 		return nil, errors.WithMessage(err, "getIdentityFromBytes error: Failed initializing bccspCryptoSigner")
 	}
 
-	return newSigningIdentity(idPub.(*identity).cert, idPub.(*identity).pk, quantumPubKey, peerSigner, msp)
+	return newSigningIdentity(idPub.(*identity).cert, idPub.(*identity).pk, qPubKey, peerSigner, msp)
 }
 
 // Setup sets up the internal data structures
@@ -421,7 +412,14 @@ func (msp *bccspmsp) deserializeIdentityInternal(serializedIdentity []byte) (Ide
 		return nil, errors.WithMessage(err, "failed to import certificate's public key")
 	}
 
-	return newIdentity(cert, pub, nil, msp)
+	// Attempt to import an alternate quantum-safe key
+	// If this is a classical (non-hybrid) cert, this will return a nil key without error.
+	qPub, err := msp.bccsp.KeyImport(cert, &bccsp.X509AltPublicKeyImportOpts{Temporary: true})
+	if err != nil {
+		return nil, errors.WithMessage(err, "found an alternate public key but failed to import it")
+	}
+
+	return newIdentity(cert, pub, qPub, msp)
 }
 
 // SatisfiesPrincipal returns null if the identity matches the principal or an error otherwise

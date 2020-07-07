@@ -238,7 +238,7 @@ func TestSatisfiesPrincipalAdmin(t *testing.T) {
 	cert, err := readFile("testdata/nodeouadmin/adm/testadmincert.pem")
 	assert.NoError(t, err)
 
-	id, _, err := thisMSP.(*bccspmsp).getIdentityFromConf(cert)
+	id, _, _, err := thisMSP.(*bccspmsp).getIdentityFromConf(cert)
 	assert.NoError(t, err)
 
 	principalBytes, err := proto.Marshal(&msp.MSPRole{Role: msp.MSPRole_ADMIN, MspIdentifier: "SampleOrg"})
@@ -275,7 +275,7 @@ func TestAdminInAdmincertsWith143MSP(t *testing.T) {
 		cert, err := readFile(filepath.Join(testFolder, "admincerts", "admin.pem"))
 		assert.NoError(t, err)
 
-		id, _, err := localMSP.(*bccspmsp).getIdentityFromConf(cert)
+		id, _, _, err := localMSP.(*bccspmsp).getIdentityFromConf(cert)
 		assert.NoError(t, err)
 		for _, ou := range id.GetOrganizationalUnits() {
 			assert.NotEqual(t, "admin", ou.OrganizationalUnitIdentifier)

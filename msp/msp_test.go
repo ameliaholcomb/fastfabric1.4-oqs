@@ -15,10 +15,12 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,11 +45,11 @@ FRBbKkDnSpaVcZgjns+mLdHV2JkF0gk=
 -----END X509 CRL-----`
 
 func TestMSPParsers(t *testing.T) {
-	_, _, err := localMsp.(*bccspmsp).getIdentityFromConf(nil)
+	_, _, _, err := localMsp.(*bccspmsp).getIdentityFromConf(nil)
 	assert.Error(t, err)
-	_, _, err = localMsp.(*bccspmsp).getIdentityFromConf([]byte("barf"))
+	_, _, _, err = localMsp.(*bccspmsp).getIdentityFromConf([]byte("barf"))
 	assert.Error(t, err)
-	_, _, err = localMsp.(*bccspmsp).getIdentityFromConf([]byte(notACert))
+	_, _, _, err = localMsp.(*bccspmsp).getIdentityFromConf([]byte(notACert))
 	assert.Error(t, err)
 
 	_, err = localMsp.(*bccspmsp).getSigningIdentityFromConf(nil)
@@ -606,42 +608,23 @@ func TestSignAndVerify_longMessage(t *testing.T) {
 
 func TestSignAndVerifyHybrid(t *testing.T) {
 	id, err := localHybridMsp.GetDefaultSigningIdentity()
-	if err != nil {
-		t.Fatalf("GetSigningIdentity should have succeeded")
-		return
-	}
+	require.NoError(t, err)
 
-	//// TODO(amelia): Serialization does not work yet.
-	//serializedID, err := id.Serialize()
-	//if err != nil {
-	//	t.Fatalf("Serialize should have succeeded")
-	//	return
-	//}
-	//
-	//idBack, err := localMsp.DeserializeIdentity(serializedID)
-	//if err != nil {
-	//	t.Fatalf("DeserializeIdentity should have succeeded")
-	//	return
-	//}
+	serializedID, err := id.Serialize()
+	require.NoError(t, err)
+
+	idBack, err := localHybridMsp.DeserializeIdentity(serializedID)
+	require.NoError(t, err)
 
 	msg := []byte("foo")
 	sig, err := id.Sign(msg)
-	if err != nil {
-		t.Fatalf("Sign should have succeeded")
-		return
-	}
+	require.NoError(t, err)
 
 	err = id.Verify(msg, sig)
-	if err != nil {
-		t.Fatalf("The signature should be valid")
-		return
-	}
+	require.NoError(t, err)
 
-	//err = idBack.Verify(msg, sig)
-	//if err != nil {
-	//	t.Fatalf("The signature should be valid")
-	//	return
-	//}
+	err = idBack.Verify(msg, sig)
+	require.NoError(t, err)
 
 	err = id.Verify(msg[1:], sig)
 	assert.Error(t, err)
@@ -1244,6 +1227,9 @@ func TestMain(m *testing.M) {
 
 	err = localHybridMsp.Setup(hybridConf)
 	if err != nil {
+		if strings.Contains(err.Error(), "Could not find SKI") {
+			fmt.Printf("Failed to find key. Have you ensured that the hybrid msp keys are also in [%s]/keystore?", mspDir)
+		}
 		fmt.Printf("Setup for hybrid msp should have succeeded, got err %s instead", err)
 		os.Exit(-1)
 	}
@@ -1283,7 +1269,7 @@ func getIdentity(t *testing.T, path string) Identity {
 	pems, err := getPemMaterialFromDir(filepath.Join(mspDir, path))
 	assert.NoError(t, err)
 
-	id, _, err := localMsp.(*bccspmsp).getIdentityFromConf(pems[0])
+	id, _, _, err := localMsp.(*bccspmsp).getIdentityFromConf(pems[0])
 	assert.NoError(t, err)
 
 	return id

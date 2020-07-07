@@ -201,10 +201,9 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 	return nil
 }
 
-// TODO(amelia): Serialization also includes the quantum-safe key?
 // Serialize returns a byte array representation of this identity
 func (id *identity) Serialize() ([]byte, error) {
-	// mspIdentityLogger.Infof("Serializing identity %s", id.id)
+	mspIdentityLogger.Infof("Serializing identity %s", id.id)
 
 	pb := &pem.Block{Bytes: id.cert.Raw, Type: "CERTIFICATE"}
 	pemBytes := pem.EncodeToMemory(pb)
