@@ -10,6 +10,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -127,4 +128,26 @@ func GetECPublicKey(priv bccsp.Key) (*ecdsa.PublicKey, error) {
 		return nil, err
 	}
 	return ecPubKey.(*ecdsa.PublicKey), nil
+}
+
+// TODO(amelia): It's a bit sad that this (and above) function are required.
+// Feels like we're all doing something wrong.
+func GetQSPublicKey(priv bccsp.Key) (*oqs.PublicKey, error) {
+
+	// get the public key
+	pubKey, err := priv.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+	// marshal to bytes
+	pubKeyBytes, err := pubKey.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	// unmarshal using pkix
+	qsPubKey, err := oqs.ParsePKIXPublicKey(pubKeyBytes)
+	if err != nil {
+		return nil, err
+	}
+	return qsPubKey.(*oqs.PublicKey), nil
 }

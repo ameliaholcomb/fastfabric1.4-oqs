@@ -75,31 +75,25 @@ func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
 	if err != nil {
 		return err
 	}
+
+	// TODO(amelia): flag-guard this or something.
+	// generate quantum-safe private key, which saves both public and private key in the Keystore
+	qPrivKey, _, err := csp.GeneratePrivateKey(keystore, &bccsp.OQSKeyGenOpts{Temporary: false})
+	if err != nil {
+		return err
+	}
+	qPubKey, err := csp.GetQSPublicKey(qPrivKey)
+	if err != nil {
+		return err
+	}
+
 	// generate X509 certificate using signing CA
 	var ous []string
 	if nodeOUs {
 		ous = []string{nodeOUMap[nodeType]}
 	}
 	cert, err := signCA.SignCertificate(filepath.Join(mspDir, "signcerts"),
-		name, ous, nil, ecPubKey, x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
-	if err != nil {
-		return err
-	}
-
-	// generate quantum-safe private key, which saves both public and private key in the Keystore
-	qPrivKey, _, err := csp.GeneratePrivateKey(keystore, &bccsp.OQSKeyGenOpts{Temporary: false})
-	if err != nil {
-		return err
-	}
-	qPubKey, err := qPrivKey.PublicKey()
-	if err != nil {
-		return err
-	}
-	qPubKeyBytes, err := qPubKey.Bytes()
-	if err != nil {
-		return err
-	}
-	err = pemExport(filepath.Join(mspDir, "signcerts", name+"-qkey.pem"), "PUBLIC KEY", qPubKeyBytes)
+		name, ous, nil, ecPubKey, qPubKey, x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
 	if err != nil {
 		return err
 	}
@@ -153,7 +147,7 @@ func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
 	}
 	// generate X509 certificate using TLS CA
 	_, err = tlsCA.SignCertificate(filepath.Join(tlsDir),
-		name, nil, sans, tlsPubKey, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,
+		name, nil, sans, tlsPubKey, nil, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})
 	if err != nil {
 		return err
@@ -221,7 +215,7 @@ func GenerateVerifyingMSP(baseDir string, signCA *ca.CA, tlsCA *ca.CA, nodeOUs b
 		return err
 	}
 	_, err = signCA.SignCertificate(filepath.Join(baseDir, "admincerts"), signCA.Name,
-		nil, nil, ecPubKey, x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+		nil, nil, ecPubKey, nil, x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
 	if err != nil {
 		return err
 	}

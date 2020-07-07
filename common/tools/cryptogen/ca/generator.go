@@ -13,6 +13,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"github.com/hyperledger/fabric/bccsp"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 	"io/ioutil"
 	"math/big"
 	"net"
@@ -97,12 +98,24 @@ func NewCA(baseDir, org, name, country, province, locality, orgUnit, streetAddre
 
 // SignCertificate creates a signed certificate based on a built-in template
 // and saves it in baseDir/name
-func (ca *CA) SignCertificate(baseDir, name string, ous, sans []string, pub *ecdsa.PublicKey,
+// The certificate is signed only with the classical public key, not the quantum one.
+func (ca *CA) SignCertificate(baseDir, name string, ous, sans []string, pub *ecdsa.PublicKey, qPub *oqs.PublicKey,
 	ku x509.KeyUsage, eku []x509.ExtKeyUsage) (*x509.Certificate, error) {
 
 	template := x509Template()
 	template.KeyUsage = ku
 	template.ExtKeyUsage = eku
+
+	// If there is a quantum public key specified, the key, algorithm, and signature are included in ExtraExtensions.
+	// See http://test-pqpki.com/ for more details.
+	// This *does not* affect the certificate signature, which is still purely classical.
+	if qPub != nil {
+		exts, err := oqs.BuildAltPublicKeyExtensions(qPub)
+		if err != nil {
+			return nil, err
+		}
+		template.ExtraExtensions = append(template.ExtraExtensions, exts...)
+	}
 
 	//set the organization for the subject
 	subject := subjectTemplateAdditional(ca.Country, ca.Province, ca.Locality, ca.OrganizationalUnit, ca.StreetAddress, ca.PostalCode)
