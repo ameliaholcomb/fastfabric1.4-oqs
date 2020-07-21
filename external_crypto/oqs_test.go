@@ -38,7 +38,8 @@ func TestRoundTrip(t *testing.T) {
 
 	}
 
-	InitLib()
+	err := InitLib()
+	require.NoError(t, err)
 	// Make random number generation deterministic in order to test against
 	// the C library results
 	SetRandomAlg(packageLib, AlgNistKat)
@@ -55,9 +56,8 @@ func TestRoundTrip(t *testing.T) {
 		t.Run(string(sigAlg), func(t *testing.T) {
 			// re-initialize Sig with new algorithm
 			DestroySig()
-			InitSig(sigAlg)
+			err = InitSig(sigAlg)
 
-			var err error
 			if err == errAlgDisabledOrUnknown {
 				t.Skipf("Skipping disabled/unknown algorithm %q", sigAlg)
 			}
