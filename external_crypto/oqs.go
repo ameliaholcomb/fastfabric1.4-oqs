@@ -137,11 +137,10 @@ package oqs
 */
 import "C"
 import (
-"fmt"
-	"log"
+	"fmt"
 	"unsafe"
 
-"github.com/pkg/errors"
+	"github.com/pkg/errors"
 )
 
 type SigType string
@@ -315,12 +314,15 @@ func libError(result C.libResult, msg string, a ...interface{}) error {
 
 // InitSig may optionally specify a SigType.
 // If exactly one SigType is not supplied, Init will fall back to defaultSigType
-func InitSig(sigT ...SigType) {
+func InitSig(sigT ...SigType) (err error) {
 	if packageSig != nil {
-		return
+		return nil
 	}
 	if packageLib == nil {
-		InitLib()
+		err = InitLib()
+		if err != nil {
+			return err
+		}
 	}
 	cryptoAlg := defaultSigType
 	if len(sigT) == 1 {
@@ -329,20 +331,22 @@ func InitSig(sigT ...SigType) {
 	}
 	sig, err := GetSign(packageLib, cryptoAlg)
 	if err != nil {
-		log.Fatal("Unable to load OQS crypto sig")
+		return errors.Wrapf(err, "Unable to load OQS crypto sig for %s", cryptoAlg)
 	}
 	packageSig = sig
+	return nil
 }
 
-func InitLib() {
+func InitLib() (err error) {
 	if packageLib != nil {
-		return
+		return nil
 	}
 	lib, err := LoadLib(defaultLibPath)
 	if err != nil {
-		log.Fatal("Unable to load OQS crypto lib")
+		return err
 	}
 	packageLib = lib
+	return nil
 }
 
 func DestroySig() (err error) {
