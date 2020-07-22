@@ -247,6 +247,7 @@ func (ks *fileBasedKeyStore) searchKeystoreForSKI(ski []byte) (k bccsp.Key, err 
 		}
 
 		if f.Size() > (1 << 16) { //64k, somewhat arbitrary limit, considering even large RSA keys
+			logger.Debugf("Skipping large key with ski [%s]", ski)
 			continue
 		}
 
