@@ -22,7 +22,7 @@ To run quantum-safe hyperledger, perform the following steps.
 1. Install liboqs 0.2.0. You can read the full instructions [here](https://github.com/open-quantum-safe/liboqs/blob/0.2.0/README.md).
 I have copied the details for Ubuntu below with appropriate flags:
 
-        sudo apt install autoconf automake libtool gcc libssl-dev python3-pytest unzip xsltproc doxygen graphviz`
+        sudo apt install autoconf automake libtool gcc libssl-dev python3-pytest unzip xsltproc doxygen graphviz
         git clone -b master https://github.com/open-quantum-safe/liboqs.git
         cd liboqs
         git checkout tags/0.2.0
@@ -37,6 +37,9 @@ Configure and build:
 Currently, the libdir and includedir flags aren't working for me. Instead, after running
 the `make` command, I copy `liboqs/.libs/*` and `liboqs/include/*` into `/usr/local/lib`
  and `/usr/local/include`, respectively.
+ 
+        sudo cp -a liboqs/.libs/* /usr/local/lib
+        sudo cp -a liboqs/include/* /usr/local/include
 
 1. Help Go find the shared library:
 
