@@ -181,7 +181,7 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 		if rest, err := asn1.Unmarshal(sig, &hsu); err != nil {
 			return err
 		} else if len(rest) != 0 {
-			return errors.New("invalid signature format")
+			return errors.New("invalid signature format for quantum signature")
 		}
 		valid, err := id.msp.bccsp.Verify(id.qPk, hsu.QuantumDigest.RightAlign(), digest, nil)
 		if err != nil {

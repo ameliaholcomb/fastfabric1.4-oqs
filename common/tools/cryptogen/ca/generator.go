@@ -109,7 +109,7 @@ func (ca *CA) SignCertificate(baseDir, name string, ous, sans []string, pub *ecd
 	// If there is a quantum public key specified, the key, algorithm, and signature are included in ExtraExtensions.
 	// See http://test-pqpki.com/ for more details.
 	// This *does not* affect the certificate signature, which is still purely classical.
-	if qPub != nil {
+	if qPub != nil && len(qPub.Pk) > 0 {
 		exts, err := oqs.BuildAltPublicKeyExtensions(qPub)
 		if err != nil {
 			return nil, err
