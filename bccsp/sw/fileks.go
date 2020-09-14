@@ -247,16 +247,19 @@ func (ks *fileBasedKeyStore) searchKeystoreForSKI(ski []byte) (k bccsp.Key, err 
 		}
 
 		if f.Size() > (1 << 16) { //64k, somewhat arbitrary limit, considering even large RSA keys
+			logger.Debugf("Skipping large key file", f.Name())
 			continue
 		}
 
 		raw, err := ioutil.ReadFile(filepath.Join(ks.path, f.Name()))
 		if err != nil {
+			logger.Debugf("Skipping unreadable key file [%s]", f.Name())
 			continue
 		}
 
 		key, err := utils.PEMtoPrivateKey(raw, ks.pwd)
 		if err != nil {
+			logger.Debugf("Skipping unparseable key file [%s]", f.Name())
 			continue
 		}
 
@@ -266,6 +269,7 @@ func (ks *fileBasedKeyStore) searchKeystoreForSKI(ski []byte) (k bccsp.Key, err 
 		case *rsa.PrivateKey:
 			k = &rsaPrivateKey{key.(*rsa.PrivateKey)}
 		default:
+			logger.Debugf("Skipping unknown key type in file [%s]", f.Name())
 			continue
 		}
 

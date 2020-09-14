@@ -18,11 +18,16 @@ package signer
 import (
 	"crypto"
 	"encoding/asn1"
+	"github.com/hyperledger/fabric/common/flogging"
 	"io"
 
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/pkg/errors"
+)
+
+var (
+	logger = flogging.MustGetLogger("bccsp_signer")
 )
 
 // TODO(amelia): Should there be a hybrid signer and a regular signer?
@@ -130,6 +135,7 @@ func (s *bccspCryptoSigner) Sign(rand io.Reader, digest []byte, opts crypto.Sign
 		return nil, err
 	}
 	if s.quantumKey != nil {
+		logger.Debug("Preparing to sign with quantum-safe key")
 		qDigest, err := s.csp.Sign(s.quantumKey, digest, opts)
 		if err != nil {
 			return nil, err
