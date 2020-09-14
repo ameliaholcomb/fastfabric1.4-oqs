@@ -193,11 +193,10 @@ func ParsePKIXPrivateKey(derBytes []byte) (interface{}, error) {
 
 // Encode quantum public keys as X509 Extensions, per
 // https://tools.ietf.org/id/draft-truskovsky-lamps-pq-hybrid-x509-00.html
-// TODO(amelia): What should these be?
 var (
-	oidSubjectAltPublicKeyInfo     = asn1.ObjectIdentifier{2, 5, 29, 41}
-	oidAltSignatureAlgorithm		   = asn1.ObjectIdentifier{2, 5, 29, 42}
-	oidAltSignatureValue			   = asn1.ObjectIdentifier{2, 5, 29, 43}
+	oidSubjectAltPublicKeyInfo     = asn1.ObjectIdentifier{2, 5, 29, 71}
+	oidAltSignatureAlgorithm		   = asn1.ObjectIdentifier{2, 5, 29, 72}
+	oidAltSignatureValue			   = asn1.ObjectIdentifier{2, 5, 29, 73}
 )
 
 

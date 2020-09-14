@@ -12,14 +12,57 @@ This is a proof of concept and not meant to be used in a production setting. Hel
 - The Hyperledger Fabric prerequisites are installed
 - `$GOPATH` and `$GOPATH/bin` are added to `$PATH`
 - The instructions assume that the repository is cloned to `$GOPATH/src/github.com/hyperledger/fabric`
-- Add the `cryptogen`and `configtxgen` binaries to a new `$GOPATH/src/github.com/hyperledger/fabric/fastfabric/scripts/bin` folder
+- /var/hyperledger/production folder exists, with user and group permissions to allow the fabric setup scripts to write.
 
+## OQS-Specific instructions
+To run quantum-safe hyperledger, perform the following steps.
+
+(Works on Ubuntu 16.04, golang 1.13, C++21)
+
+1. Install liboqs 0.2.0. You can read the full instructions [here](https://github.com/open-quantum-safe/liboqs/blob/0.2.0/README.md).
+I have copied the details for Ubuntu below with appropriate flags:
+
+        sudo apt install autoconf automake libtool gcc libssl-dev python3-pytest unzip xsltproc doxygen graphviz
+        git clone -b master https://github.com/open-quantum-safe/liboqs.git
+        cd liboqs
+        git checkout tags/0.2.0
+    
+Configure and build:
+
+        autoreconf -i
+        ./configure --libdir=/usr/local --includedir=/usr/local BUILD_SHARED_LIBS=ON
+        make clean
+        make -j
+
+Currently, the libdir and includedir flags aren't working for me. Instead, after running
+the `make` command, I copy `liboqs/.libs/*` and `liboqs/include/*` into `/usr/local/lib`
+ and `/usr/local/include`, respectively.
+ 
+        sudo cp -a liboqs/.libs/* /usr/local/lib
+        sudo cp -a liboqs/include/* /usr/local/include
+
+1. Help Go find the shared library:
+
+        export PATH=$PATH:/usr/local/lib
+        sudo ldconfig
+        
+1. Run the following commands to build executables that can create a quantum-safe hybrid crypto config.
+Do not use the cryptogen and configtxgen executables from another source. 
+
+        cd hyperledger/fabric/common/tools/cryptogen && go build
+        cd hyperledger/fabric/common/tools/configtxgen && go build
+        cd $GOPATH/src/github.com/hyperledger/fabric
+        mkdir -r .build/bin
+        mv common/tools/cryptogen/cryptogen .build/bin
+        mv common/tools/configtxgen/configtxgen .build/bin
+
+1. Proceed with original setup instructions, below.
 
 ## Network Setup Instructions
 
 All following steps use scripts from the  `fabric/fastfabric/scripts` folder.
 - Fill in the values for the variables in `custom_parameters.sh` based on the comments in the file.
-- Run `create_artifact.sh` to create the prerequisite files to setup the network, channel and anchor peer.
+- Run `create_artifacts.sh` to create the prerequisite files to setup the network, channel and anchor peer.
 - For the following steps it is advised to run them in different terminals or use `tmux`.
     - Run `run_orderer.sh` on the respective server that should form the ordering service
     - Run `run_storage.sh` on the server that should persist the blockchain and world state
@@ -39,5 +82,22 @@ All following steps use scripts from the  `fabric/fastfabric/scripts/client` fol
 
 - First run `node addToWallet.js` to copy the necessary user credentials from the `crypto-config` folder into the `wallet` folder.
 - Compile either the `invoke.ts` (a client that endorses and submits transactions in one go) or `invoke2.ts` script (a client that first caches all endorsements before submitting them in bulk to the ordering service) to Javascript (change the `include` line in `tsconfig.json`). See https://code.visualstudio.com/docs/typescript/typescript-compiling for help.
-- Depending on your choice modify `run_benchmark.sh` to either run `invoke.ts` or `invoke2.ts`. Run it with the command `.\run_benchmark.sh [lower thread index] [upper thread index exclusive] [total thread count] [endorser addr] [number of touched accounts] [percentage of contentious txs]`. This allows to create multiple client threads on multiple servers (wherever this script is executed), to generate load.
+- Depending on your choice modify `run_benchmark.sh` to either run `invoke.ts` or `invoke2.ts`. Run it with the command `./run_benchmark.sh [lower thread index] [upper thread index exclusive] [total thread count] [endorser addr] [number of touched accounts] [percentage of contentious txs]`. This allows to create multiple client threads on multiple servers (wherever this script is executed), to generate load.
 Example: `./run_benchmark.sh 0 10 50 localhost 20000 70`. This spawns 10 threads on this server (and expects that the script is run on other servers to spawn 40 more threads) and calls an endorser on localhost to endorse the transactions. Because only a fifth of the total threads are spawned by this script, only the first fifth of the accounts are touched, in this case `account0` to `account3999` for a total of 2000 transactions. There is a 70% chance that any generated transaction touches `account0` and `account1` instead of a previously untouched pair to simulate a transaction conflict.  
+
+
+## Possible Errors and Remedies
+- Compilation errors when building cryptogen that reference type mismatches in external_crypto/oqs.go:
+Check that liboqs was built at the right version (0.2.0). Check that golang is at the right version (1.13).
+If cryptogen has errors when running (in create_artifacts.sh), run 
+
+        go test -v external_crypto/
+    to understand if the OQS wrapper is working correctly, and whether the errors affect all algorithms or just some.
+
+- Docker permission errors when running chaincode_setup: Make sure the docker group has the appropriate permissions.
+
+        sudo usermod -aG docker ${USER}
+        newgrp docker
+        
+
+

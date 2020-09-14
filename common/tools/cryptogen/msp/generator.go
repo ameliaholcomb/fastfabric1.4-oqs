@@ -9,15 +9,15 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
-	"os"
-	"path/filepath"
-
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/hyperledger/fabric/common/tools/cryptogen/ca"
 	"github.com/hyperledger/fabric/common/tools/cryptogen/csp"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 	fabricmsp "github.com/hyperledger/fabric/msp"
 	"gopkg.in/yaml.v2"
+	"os"
+	"path/filepath"
 )
 
 const (
@@ -77,14 +77,20 @@ func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
 	}
 
 	// TODO(amelia): flag-guard this or something.
-	// generate quantum-safe private key, which saves both public and private key in the Keystore
-	qPrivKey, _, err := csp.GeneratePrivateKey(keystore, &bccsp.OQSKeyGenOpts{Temporary: false})
-	if err != nil {
-		return err
-	}
-	qPubKey, err := csp.GetQSPublicKey(qPrivKey)
-	if err != nil {
-		return err
+	// Only generate hybrid quantum-safe identities for peers and orderers.
+	// The fabric client does not currently support anything but ECDSA.
+	qPubKey := &oqs.PublicKey{}
+	nodeName := nodeOUMap[nodeType]
+	if nodeName == PEEROU || nodeName == ORDEREROU {
+		// generate quantum-safe private key, which saves both public and private key in the Keystore
+		qPrivKey, _, err := csp.GeneratePrivateKey(keystore, &bccsp.OQSKeyGenOpts{Temporary: false})
+		if err != nil {
+			return err
+		}
+		qPubKey, err = csp.GetQSPublicKey(qPrivKey)
+		if err != nil {
+			return err
+		}
 	}
 
 	// generate X509 certificate using signing CA

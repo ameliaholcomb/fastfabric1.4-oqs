@@ -155,7 +155,7 @@ func NewSerializedIdentity(mspID string, certPEM []byte) ([]byte, error) {
 // to determine whether this identity produced the
 // signature; it returns nil if so or an error otherwise
 func (id *identity) Verify(msg []byte, sig []byte) error {
-	// mspIdentityLogger.Infof("Verifying signature")
+	mspIdentityLogger.Debug("Verifying signature")
 
 	// Compute Hash
 	hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
@@ -174,13 +174,14 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 	}
 
 	if id.qPk != nil {
+		mspIdentityLogger.Debug("Verifying with quantum-safe public key.")
 		// TODO(amelia): This is a bit ugly. We might consider a verifier, like signer, to handle it better.
 		// If there is a quantum public key, then we interpret the sig bytes as a hybrid signature
 		var hsu hybridSignatureUnpack
 		if rest, err := asn1.Unmarshal(sig, &hsu); err != nil {
 			return err
 		} else if len(rest) != 0 {
-			return errors.New("invalid signature format")
+			return errors.New("invalid signature format for quantum signature")
 		}
 		valid, err := id.msp.bccsp.Verify(id.qPk, hsu.QuantumDigest.RightAlign(), digest, nil)
 		if err != nil {

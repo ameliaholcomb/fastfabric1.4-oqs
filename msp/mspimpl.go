@@ -175,6 +175,9 @@ func (msp *bccspmsp) getIdentityFromConf(idBytes []byte) (mspId Identity, pK bcc
 	// also attempt to get an alternate (aka, post-quantum) key
 	// If not present, this will return nil with no error.
 	certQPubK, err := msp.bccsp.KeyImport(cert, &bccsp.X509AltPublicKeyImportOpts{Temporary: true})
+	if certQPubK != nil {
+		mspLogger.Debug("Successfully imported quantum-safe public key from certificate")
+	}
 
 	mspId, err = newIdentity(cert, certPubK, certQPubK, msp)
 	if err != nil {
@@ -218,6 +221,9 @@ func (msp *bccspmsp) getSigningIdentityFromConf(sidInfo *m.SigningIdentityInfo) 
 		if err != nil {
 			return nil, err
 		}
+	}
+	if qPrivKey != nil {
+		mspLogger.Debug("Successfully extracted quantum-safe private key")
 	}
 
 	// get the peer signer
@@ -417,6 +423,9 @@ func (msp *bccspmsp) deserializeIdentityInternal(serializedIdentity []byte) (Ide
 	qPub, err := msp.bccsp.KeyImport(cert, &bccsp.X509AltPublicKeyImportOpts{Temporary: true})
 	if err != nil {
 		return nil, errors.WithMessage(err, "found an alternate public key but failed to import it")
+	}
+	if qPub != nil {
+		mspLogger.Debug("Successfully imported quantum-safe public key after deserialization.")
 	}
 
 	return newIdentity(cert, pub, qPub, msp)
