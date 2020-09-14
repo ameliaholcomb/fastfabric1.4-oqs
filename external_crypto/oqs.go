@@ -164,11 +164,9 @@ const (
 
 	SigPicnic2L5FS SigType = "picnic2_L5_FS"
 
-	SigqTESLAI SigType = "qTESLA_I"
+	SigqTESLAI SigType = "qTesla-p-I"
 
-	SigqTESLAIIIsize SigType = "qTESLA_III_size"
-
-	SigqTESLAIIIspeed SigType = "qTESLA_III_speed"
+	SigqTESLAIII SigType = "qTesla-p-III"
 
 	SigDilithium_2 SigType = "DILITHIUM_2"
 

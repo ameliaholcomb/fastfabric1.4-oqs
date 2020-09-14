@@ -25,8 +25,7 @@ var (
 	oidPicnicL5UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 50}
 	oidPicnic2L5FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 51}
 	oidqTESLAI        = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 53}
-	oidqTESLAIIIsize  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 58}
-	oidqTESLAIIIspeed = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 59} // ???
+	oidqTESLAIII      = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 58}
 	oidDilithium_2    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 21}
 	oidDilithium_3    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 22}
 	oidDilithium_4    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 23}
@@ -46,8 +45,7 @@ var oidMap = map[SigType]asn1.ObjectIdentifier {
 	SigPicnic2L3FS  : oidPicnic2L3FS,
 	SigPicnic2L5FS  : oidPicnic2L5FS,
 	SigqTESLAI  : oidqTESLAI,
-	SigqTESLAIIIsize  : oidqTESLAIIIsize,
-	SigqTESLAIIIspeed  : oidqTESLAIIIspeed,
+	SigqTESLAIII  : oidqTESLAIII,
 	SigDilithium_2  : oidDilithium_2,
 	SigDilithium_3  : oidDilithium_3,
 	SigDilithium_4  : oidDilithium_4,

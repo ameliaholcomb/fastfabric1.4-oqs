@@ -15,8 +15,7 @@ func TestRoundTrip(t *testing.T) {
 
 	sigs := []SigType{
 		SigqTESLAI,
-		SigqTESLAIIIspeed,
-		SigqTESLAIIIsize,
+		SigqTESLAIII,
 
 		SigPicnicL1FS,
 		SigPicnicL1UR,
