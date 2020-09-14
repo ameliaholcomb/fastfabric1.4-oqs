@@ -13,8 +13,8 @@ export CORE_PEER_GOSSIP_USELEADERELECTION=false
 export CORE_PEER_GOSSIP_ORGLEADER=true
 
 
-rm /var/hyperledger/production/* -r # clean up data from previous runs
-(cd ${FABRIC_ROOT} && make peer)
+rm -r /var/hyperledger/production/* # clean up data from previous runs
+(cd ${FABRIC_ROOT}/peer && go install)
 
 # peer node start can be run without the storageAddr. In that case those modules will not be decoupled to different nodes
 s=""
