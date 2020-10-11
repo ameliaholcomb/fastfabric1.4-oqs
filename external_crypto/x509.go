@@ -2,6 +2,9 @@ package oqs
 
 import "C"
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
@@ -200,56 +203,126 @@ var (
 )
 
 
-// pkixSubjectAltPublicKeyInfo reflects a PKIX Alternate Public Key Identifier.
-// See https://tools.ietf.org/id/draft-truskovsky-lamps-pq-hybrid-x509-00.html
-type pkixSubjectAltPublicKeyInfo struct {
-	Algorithm              pkix.AlgorithmIdentifier
-	SubjectAltPublicKey	   asn1.BitString
+type KeyMaterial struct{
+	ClassicalBytes    asn1.BitString
+	QuantumBytes	   asn1.BitString
 }
 
-// asn1.Unmarshal will unmarshal into a data structure like pkixSubjectAltPublicKeyInfo, but with RawContent
-type pkixSubjectAltPublicKeyInfoUnpack struct {
-	Raw       asn1.RawContent
-	Algorithm pkix.AlgorithmIdentifier
-	SubjectAltPublicKey	   asn1.BitString
-}
-
-func BuildAltPublicKeyExtensions(pub interface{}) ([]pkix.Extension, error) {
-	pk, ok := pub.(*PublicKey)
-	if !ok {
-		return nil, errors.New("key is not a known OQS key type")
+func buildSubjectAltPublicKeyInfoExt(qk *PublicKey) (pkix.Extension, error) {
+	oid, err := getAlgorithmIdentifier(qk.Sig.Algorithm)
+	if err != nil {
+		return pkix.Extension{}, err
 	}
-	publicKeyAlgorithm, err := getAlgorithmIdentifier(pk.Sig.Algorithm)
+	pki := pkixPublicKey{
+		Algorithm: oid,
+		PublicKey: asn1.BitString{
+			qk.Pk,
+			8 * len(qk.Pk),
+		},
+	}
+	val, _ := asn1.Marshal(pki)
+
+	return pkix.Extension {
+		Id:       oidSubjectAltPublicKeyInfo,
+		Critical: false,
+		Value:    val,
+	}, nil
+}
+
+//func buildAltSignatureAlgorithmExt(qSigner crypto.Signer) (pkix.Extension, error) {
+//
+//	pK, ok := qSigner.Public().(*PublicKey)
+//	if !ok {
+//		return pkix.Extension{}, errors.New("Unable to obtain pq algorithm from signer")
+//	}
+//	sa, err := getAlgorithmIdentifier(pK.Sig.Algorithm)
+//	if err != nil {
+//		return pkix.Extension{}, err
+//	}
+//	val, _ := asn1.Marshal(sa)
+//	return pkix.Extension{
+//		Id:       oidAltSignatureAlgorithm,
+//		Critical: false,
+//		Value:    val,
+//	}, nil
+//
+//}
+
+func buildKmMessage(qkb []byte, ckb []byte) ([]byte) {
+	km := KeyMaterial{
+		ClassicalBytes: asn1.BitString{
+			ckb,
+			8 * len(ckb),
+		},
+		QuantumBytes:   asn1.BitString{
+			qkb,
+			8 * len(qkb),
+
+		},
+	}
+	kmBytes, _ := asn1.Marshal(km)
+	return kmBytes
+}
+
+func buildAltSignatureValueExt(qkb []byte, ckb []byte, qSigner crypto.Signer) (pkix.Extension, error) {
+
+	kmBytes := buildKmMessage(qkb, ckb)
+
+	signature, err := qSigner.Sign(rand.Reader, kmBytes, nil)
+	if err != nil {
+		return pkix.Extension{}, errors.New("Failed to sign classical/quantum key material")
+	}
+	return pkix.Extension{
+		Id:       oidAltSignatureValue,
+		Critical: false,
+		Value:    signature,
+	}, err
+}
+
+func BuildAltPublicKeyExtensions(quantumKey interface{}, classicalKey interface{}, qSigner crypto.Signer) ([]pkix.Extension, error) {
+
+	var extensions []pkix.Extension
+	var qKBytes []byte
+	qK, ok := quantumKey.(*PublicKey)
+	if !ok {
+		return nil, errors.New("provided quantum key is not a known OQS key type")
+	}
+	if qK != nil {
+		ext, err := buildSubjectAltPublicKeyInfoExt(qK)
+		if err != nil {
+			return nil, err
+		}
+		extensions = append(extensions, ext)
+
+		qKBytes = qK.Pk
+	}
+
+	cKBytes, err := x509.MarshalPKIXPublicKey(classicalKey)
 	if err != nil {
 		return nil, err
 	}
-	extensions := make([]pkix.Extension, 2)
-
-	pkix := pkixSubjectAltPublicKeyInfo{
-		Algorithm: publicKeyAlgorithm,
-		SubjectAltPublicKey: asn1.BitString{
-			Bytes:     pk.Pk,
-			BitLength: 8 * len(pk.Pk),
-		},
+	ext, err := buildAltSignatureValueExt(qKBytes, cKBytes, qSigner)
+	if err != nil {
+		return nil, err
 	}
-	val, _ := asn1.Marshal(pkix)
-	extensions[0].Id = oidSubjectAltPublicKeyInfo
-	extensions[0].Critical = false
-	extensions[0].Value = val
+	extensions = append(extensions, ext)
 
-	val, _ = asn1.Marshal(publicKeyAlgorithm)
-	extensions[1].Id = oidAltSignatureAlgorithm
-	extensions[1].Critical = false
-	extensions[1].Value = val
-
+	//ext, err = buildAltSignatureAlgorithmExt(qSigner)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//extensions = append(extensions, ext)
 	return extensions, nil
 }
 
-func ParseAltPublicKeyExtensions(extensions []pkix.Extension) (interface{}, error) {
+func ParseSubjectAltPublicKeyInfoExtension(extensions []pkix.Extension) (*PublicKey, error) {
+	var publicKey *PublicKey = nil
 	for _, ext := range(extensions) {
-		// TODO(amelia): Also parse the algorithm, check that it matches and such.
 		if ext.Id.Equal(oidSubjectAltPublicKeyInfo) {
-			var pku pkixSubjectAltPublicKeyInfoUnpack
+			if publicKey != nil {
+				return nil, errors.New("Multiple alternate public keys found")
+			}
+			var pku pkixPublicKeyUnpack
 			if rest, err := asn1.Unmarshal(ext.Value, &pku); err != nil {
 				return nil, err
 			} else if len(rest) != 0 {
@@ -259,15 +332,86 @@ func ParseAltPublicKeyExtensions(extensions []pkix.Extension) (interface{}, erro
 			if alg == UnknownKeyAlgorithm {
 				return nil, errors.New("unknown OQS public key algorithm")
 			}
-			asn1Data := pku.SubjectAltPublicKey.RightAlign()
+			asn1Data := pku.PublicKey.RightAlign()
 			s := OQSSigInfo {
 				Algorithm: alg,
 			}
-			publicKey := &PublicKey { Pk: asn1Data, Sig: s}
-			return publicKey, nil
+			publicKey = &PublicKey { Pk: asn1Data, Sig: s}
 		}
 	}
 	// If no alt public key extensions are found, this is not an error.
 	// Caller is responsible for checking that returned key is not nil, if required.
-	return nil, nil
+	return publicKey, nil
+}
+
+func parseAltSignatureValueExtension(extensions []pkix.Extension) ([]byte, error) {
+	var sig []byte = nil
+	for _, ext := range(extensions) {
+		if ext.Id.Equal(oidAltSignatureValue) {
+			if sig != nil {
+				return nil, errors.New("Multiple alternate signature values found")
+			}
+			sig = ext.Value
+		}
+	}
+	// If no alt signature value extensions are found, this is not an error.
+	// Caller is responsible for checking that returned signature is not nil, if required.
+	return sig, nil
+}
+
+
+func Validate(validationChain []*x509.Certificate)(error) {
+	// Check the validation chain for post-quantum validation.
+	// If the rootCA has no post-quantum key material, return immediately: no additional validation needed.
+	rootCert := validationChain[len(validationChain) - 1]
+	rootPk, err := ParseSubjectAltPublicKeyInfoExtension(rootCert.Extensions)
+	if err != nil {
+		return err
+	}
+	if rootPk == nil {
+		return nil
+	}
+
+	// Otherwise, the chain of certs must all carry the AltSignatureValue extension
+	// with a valid post-quantum signature from the parent cert matching the cert's key material
+	// The leaf cert IS permitted to have classical-only key material, but all other certs must have
+	// a SubjectAltPublicKeyInfo extension.
+	parentPk := rootPk
+	for i := len(validationChain) - 1; i >= 0; i-- {
+		cert := validationChain[i]
+		pk, err := ParseSubjectAltPublicKeyInfoExtension(cert.Extensions)
+		if err != nil {
+			return err
+		}
+		var pkBytes []byte
+		if pk == nil && i != 0 {
+			// This is not a leaf certificate, but we do not have a post-quantum public key.
+			return errors.New("Found no post-quantum key in a non-leaf cert on a quantum-safe validation chain")
+		}
+		if pk != nil {
+			pkBytes = pk.Pk
+		}
+
+		ckBytes, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
+		if err != nil {
+			return err
+		}
+
+		km := buildKmMessage(pkBytes, ckBytes)
+		sig, err := parseAltSignatureValueExtension(cert.Extensions)
+		if err != nil {
+			return err
+		}
+		isValid, err := Verify(*parentPk, sig, km)
+		if err != nil {
+			return err
+		}
+		if !isValid {
+			return errors.New("Invalid postquantum signature for certificate key material")
+		}
+
+		// TODO(ameliaholcomb): Check the signature algorithm extension
+	}
+	// If the entire chain was validated successfully, we are done
+	return nil
 }

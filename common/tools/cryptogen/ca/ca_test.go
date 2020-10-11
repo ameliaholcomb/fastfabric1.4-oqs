@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"github.com/hyperledger/fabric/bccsp"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 	"net"
 	"os"
 	"path/filepath"
@@ -42,18 +43,26 @@ func TestLoadCertificateECDSA(t *testing.T) {
 	certDir := filepath.Join(testDir, "certs")
 	// generate private key
 	priv, _, err := csp.GeneratePrivateKey(certDir, &bccsp.ECDSAP256KeyGenOpts{Temporary: false})
-	assert.NoError(t, err, "Failed to generate signed certificate")
+	assert.NoError(t, err, "Failed to generate private key and signer")
 
 	// get EC public key
 	ecPubKey, err := csp.GetECPublicKey(priv)
-	assert.NoError(t, err, "Failed to generate signed certificate")
-	assert.NotNil(t, ecPubKey, "Failed to generate signed certificate")
+	assert.NoError(t, err, "Failed to obtain public key")
+	assert.NotNil(t, ecPubKey, "Failed to obtain public key")
+
+	qPriv, _, err := csp.GeneratePrivateKey(certDir, &bccsp.OQSKeyGenOpts{Temporary:false})
+	assert.NoError(t, err, "Failed to generate quantum private key and signer")
+
+	// get QS public key
+	qPubKey, err := csp.GetQSPublicKey(qPriv)
+	assert.NoError(t, err, "Failed to obtain quantum public key")
+	assert.NotNil(t, qPubKey, "Failed to obtain quantum public key")
 
 	// create our CA
 	rootCA, err := ca.NewCA(caDir, testCA3Name, testCA3Name, testCountry, testProvince, testLocality, testOrganizationalUnit, testStreetAddress, testPostalCode)
 	assert.NoError(t, err, "Error generating CA")
 
-	cert, err := rootCA.SignCertificate(certDir, testName3, nil, nil, ecPubKey,
+	cert, err := rootCA.SignCertificate(certDir, testName3, nil, nil, ecPubKey, qPubKey,
 		x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageAny})
 	assert.NoError(t, err, "Failed to generate signed certificate")
@@ -77,6 +86,7 @@ func TestNewCA(t *testing.T) {
 	assert.NotNil(t, rootCA, "Failed to return CA")
 	assert.NotNil(t, rootCA.Signer,
 		"rootCA.Signer should not be empty")
+	assert.NotNil(t, rootCA.QSigner, "rootCA.QSigner should not be empty")
 	assert.IsType(t, &x509.Certificate{}, rootCA.SignCert,
 		"rootCA.SignCert should be type x509.Certificate")
 
@@ -115,11 +125,19 @@ func TestGenerateSignCertificate(t *testing.T) {
 	assert.NoError(t, err, "Failed to generate signed certificate")
 	assert.NotNil(t, ecPubKey, "Failed to generate signed certificate")
 
+	qPriv, _, err := csp.GeneratePrivateKey(certDir, &bccsp.OQSKeyGenOpts{Temporary:false})
+	assert.NoError(t, err, "Failed to generate quantum private key and signer")
+
+	// get QS public key
+	qPubKey, err := csp.GetQSPublicKey(qPriv)
+	assert.NoError(t, err, "Failed to obtain quantum public key")
+	assert.NotNil(t, qPubKey, "Failed to obtain quantum public key")
+
 	// create our CA
 	rootCA, err := ca.NewCA(caDir, testCA2Name, testCA2Name, testCountry, testProvince, testLocality, testOrganizationalUnit, testStreetAddress, testPostalCode)
 	assert.NoError(t, err, "Error generating CA")
 
-	cert, err := rootCA.SignCertificate(certDir, testName, nil, nil, ecPubKey,
+	cert, err := rootCA.SignCertificate(certDir, testName, nil, nil, ecPubKey, qPubKey,
 		x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageAny})
 	assert.NoError(t, err, "Failed to generate signed certificate")
@@ -128,21 +146,21 @@ func TestGenerateSignCertificate(t *testing.T) {
 		cert.KeyUsage)
 	assert.Contains(t, cert.ExtKeyUsage, x509.ExtKeyUsageAny)
 
-	cert, err = rootCA.SignCertificate(certDir, testName, nil, nil, ecPubKey,
+	cert, err = rootCA.SignCertificate(certDir, testName, nil, nil, ecPubKey, qPubKey,
 		x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
 	assert.NoError(t, err, "Failed to generate signed certificate")
 	assert.Equal(t, 0, len(cert.ExtKeyUsage))
 
 	// make sure ous are correctly set
 	ous := []string{"TestOU", "PeerOU"}
-	cert, err = rootCA.SignCertificate(certDir, testName, ous, nil, ecPubKey,
+	cert, err = rootCA.SignCertificate(certDir, testName, ous, nil, ecPubKey, qPubKey,
 		x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
 	assert.Contains(t, cert.Subject.OrganizationalUnit, ous[0])
 	assert.Contains(t, cert.Subject.OrganizationalUnit, ous[1])
 
 	// make sure sans are correctly set
 	sans := []string{testName2, testIP}
-	cert, err = rootCA.SignCertificate(certDir, testName, nil, sans, ecPubKey,
+	cert, err = rootCA.SignCertificate(certDir, testName, nil, sans, ecPubKey, qPubKey,
 		x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
 	assert.Contains(t, cert.DNSNames, testName2)
 	assert.Contains(t, cert.IPAddresses, net.ParseIP(testIP).To4())
@@ -152,7 +170,7 @@ func TestGenerateSignCertificate(t *testing.T) {
 	assert.Equal(t, true, checkForFile(pemFile),
 		"Expected to find file "+pemFile)
 
-	_, err = rootCA.SignCertificate(certDir, "empty/CA", nil, nil, ecPubKey,
+	_, err = rootCA.SignCertificate(certDir, "empty/CA", nil, nil, ecPubKey, qPubKey,
 		x509.KeyUsageKeyEncipherment, []x509.ExtKeyUsage{x509.ExtKeyUsageAny})
 	assert.Error(t, err, "Bad name should fail")
 
@@ -161,7 +179,7 @@ func TestGenerateSignCertificate(t *testing.T) {
 		Name:     "badCA",
 		SignCert: &x509.Certificate{},
 	}
-	_, err = badCA.SignCertificate(certDir, testName, nil, nil, &ecdsa.PublicKey{},
+	_, err = badCA.SignCertificate(certDir, testName, nil, nil, &ecdsa.PublicKey{}, &oqs.PublicKey{},
 		x509.KeyUsageKeyEncipherment, []x509.ExtKeyUsage{x509.ExtKeyUsageAny})
 	assert.Error(t, err, "Empty CA should not be able to sign")
 	cleanup(testDir)

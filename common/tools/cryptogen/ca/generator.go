@@ -34,71 +34,87 @@ type CA struct {
 	OrganizationalUnit string
 	StreetAddress      string
 	PostalCode         string
-	//SignKey  *ecdsa.PrivateKey
-	Signer   crypto.Signer
-	SignCert *x509.Certificate
+	Signer             crypto.Signer
+	QSigner            crypto.Signer
+	SignCert           *x509.Certificate
 }
 
 // NewCA creates an instance of CA and saves the signing key pair in
 // baseDir/name
 func NewCA(baseDir, org, name, country, province, locality, orgUnit, streetAddress, postalCode string) (*CA, error) {
 
-	var response error
-	var ca *CA
-
 	err := os.MkdirAll(baseDir, 0755)
-	if err == nil {
-		priv, signer, err := csp.GeneratePrivateKey(baseDir, &bccsp.ECDSAP256KeyGenOpts{Temporary: false})
-		response = err
-		if err == nil {
-			// get public signing certificate
-			ecPubKey, err := csp.GetECPublicKey(priv)
-			response = err
-			if err == nil {
-				template := x509Template()
-				//this is a CA
-				template.IsCA = true
-				template.KeyUsage |= x509.KeyUsageDigitalSignature |
-					x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign |
-					x509.KeyUsageCRLSign
-				template.ExtKeyUsage = []x509.ExtKeyUsage{
-					x509.ExtKeyUsageClientAuth,
-					x509.ExtKeyUsageServerAuth,
-				}
-
-				//set the organization for the subject
-				subject := subjectTemplateAdditional(country, province, locality, orgUnit, streetAddress, postalCode)
-				subject.Organization = []string{org}
-				subject.CommonName = name
-
-				template.Subject = subject
-				template.SubjectKeyId = priv.SKI()
-
-				x509Cert, err := genCertificateECDSA(baseDir, name, &template, &template,
-					ecPubKey, signer)
-				response = err
-				if err == nil {
-					ca = &CA{
-						Name:               name,
-						Signer:             signer,
-						SignCert:           x509Cert,
-						Country:            country,
-						Province:           province,
-						Locality:           locality,
-						OrganizationalUnit: orgUnit,
-						StreetAddress:      streetAddress,
-						PostalCode:         postalCode,
-					}
-				}
-			}
-		}
+	if err != nil {
+		return nil, err
 	}
-	return ca, response
+	priv, signer, err := csp.GeneratePrivateKey(baseDir, &bccsp.ECDSAP256KeyGenOpts{Temporary: false})
+	if err != nil {
+		return nil, err
+	}
+
+	// Get a public and private post-quantum key
+	qPriv, qSigner, err := csp.GeneratePrivateKey(baseDir, &bccsp.OQSKeyGenOpts{Temporary:false})
+	if err != nil {
+		return nil, err
+	}
+	qPub, err := csp.GetQSPublicKey(qPriv)
+	if err != nil {
+		return nil, err
+	}
+
+	// get public signing certificate
+	ecPubKey, err := csp.GetECPublicKey(priv)
+	if err != nil {
+		return nil, err
+	}
+	template := x509Template()
+	//this is a CA
+	template.IsCA = true
+	template.KeyUsage |= x509.KeyUsageDigitalSignature |
+		x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign |
+		x509.KeyUsageCRLSign
+	template.ExtKeyUsage = []x509.ExtKeyUsage{
+		x509.ExtKeyUsageClientAuth,
+		x509.ExtKeyUsageServerAuth,
+	}
+
+	//set the organization for the subject
+	subject := subjectTemplateAdditional(country, province, locality, orgUnit, streetAddress, postalCode)
+	subject.Organization = []string{org}
+	subject.CommonName = name
+
+	template.Subject = subject
+	template.SubjectKeyId = priv.SKI()
+
+	// Root certificate will sign its own public key material for post-quantum x509 extensions
+	exts, err := oqs.BuildAltPublicKeyExtensions(qPub, ecPubKey, qSigner)
+	if err != nil {
+		return nil, err
+	}
+	template.ExtraExtensions = append(template.ExtraExtensions, exts...)
+
+	x509Cert, err := genCertificateECDSA(baseDir, name, &template, &template,
+		ecPubKey, signer)
+	if err != nil {
+		return nil, err
+	}
+	ca := &CA{
+		Name:               name,
+		Signer:             signer,
+		QSigner:            qSigner,
+		SignCert:           x509Cert,
+		Country:            country,
+		Province:           province,
+		Locality:           locality,
+		OrganizationalUnit: orgUnit,
+		StreetAddress:      streetAddress,
+		PostalCode:         postalCode,
+	}
+	return ca, nil
 }
 
 // SignCertificate creates a signed certificate based on a built-in template
 // and saves it in baseDir/name
-// The certificate is signed only with the classical public key, not the quantum one.
 func (ca *CA) SignCertificate(baseDir, name string, ous, sans []string, pub *ecdsa.PublicKey, qPub *oqs.PublicKey,
 	ku x509.KeyUsage, eku []x509.ExtKeyUsage) (*x509.Certificate, error) {
 
@@ -106,15 +122,16 @@ func (ca *CA) SignCertificate(baseDir, name string, ous, sans []string, pub *ecd
 	template.KeyUsage = ku
 	template.ExtKeyUsage = eku
 
-	// If there is a quantum public key specified, the key, algorithm, and signature are included in ExtraExtensions.
+	// Also create alt public key extensions if the ca has a post-quantum signer
 	// See http://test-pqpki.com/ for more details.
-	// This *does not* affect the certificate signature, which is still purely classical.
-	if qPub != nil && len(qPub.Pk) > 0 {
-		exts, err := oqs.BuildAltPublicKeyExtensions(qPub)
+	// This does not affect the certificate's primary signature, which is still purely classical.
+	if ca.QSigner != nil {
+		exts, err := oqs.BuildAltPublicKeyExtensions(qPub, pub, ca.QSigner)
 		if err != nil {
 			return nil, err
 		}
 		template.ExtraExtensions = append(template.ExtraExtensions, exts...)
+
 	}
 
 	//set the organization for the subject

@@ -187,7 +187,7 @@ type AlgType string
 const (
 	AlgNistKat AlgType = "NIST-KAT"
 	defaultLibPath string = "liboqs.so"
-	defaultSigType SigType = SigqTESLAI
+	defaultSigType SigType = SigDilithium_2
 )
 
 var errAlreadyClosed = errors.New("already closed")

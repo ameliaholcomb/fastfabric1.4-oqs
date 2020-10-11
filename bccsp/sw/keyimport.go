@@ -171,7 +171,7 @@ func (ki *x509AltPublicKeyImportOptsKeyImporter) KeyImport(raw interface{}, opts
 		return nil, errors.New("Invalid raw material. Expected *x509.Certificate.")
 	}
 
-	pub, err := oqs.ParseAltPublicKeyExtensions(x509Cert.Extensions)
+	pub, err := oqs.ParseSubjectAltPublicKeyInfoExtension(x509Cert.Extensions)
 	if err != nil {
 		return nil, errors.New("Unable to parse X509 alternate public key extension")
 	}
@@ -189,12 +189,8 @@ func (ki *x509AltPublicKeyImportOptsKeyImporter) KeyImport(raw interface{}, opts
 		return nil, nil
 
 	}
-	pk, ok := pub.(*oqs.PublicKey)
-	if !ok {
-		return nil, errors.New("Certificate's alternate public key type not recognized. Must be OQS public key")
-	}
 	return ki.bccsp.KeyImporters[reflect.TypeOf(&bccsp.OQSGoPublicKeyImportOpts{})].KeyImport(
-		pk,
+		pub,
 		&bccsp.OQSGoPublicKeyImportOpts{Temporary: opts.Ephemeral()})
 }
 

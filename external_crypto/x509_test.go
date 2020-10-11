@@ -1,13 +1,30 @@
 package oqs
 
 import (
+	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"github.com/stretchr/testify/require"
+	"io"
 	"testing"
 )
+
+// implements crypto.Signer
+type mockSigner struct {
+	sk SecretKey
+}
+
+func (ms *mockSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	return Sign(ms.sk, digest)
+}
+
+func (ms *mockSigner) Public() (crypto.PublicKey) {
+	return ms.sk.Pk
+}
 
 func TestMarshalPKIXPublicKeySuccess(t *testing.T) {
 	pk, _, err := KeyPair()
@@ -134,52 +151,90 @@ func TestParsePKIXPrivateKeySuccess(t *testing.T) {
 }
 
 func TestBuildAltPublicKeyInfoExtensionsSuccess(t *testing.T) {
+	// Make up some nice key material
 	pk, _, err := KeyPair()
 	require.NoError(t, err)
-	_, err = BuildAltPublicKeyExtensions(&pk)
+	_, sk, err := KeyPair()
+	require.NoError(t, err)
+	ms := mockSigner{sk: sk}
+	ck, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	// Turn it into extensions
+	_, err = BuildAltPublicKeyExtensions(&pk, ck.Public(), &ms)
+	require.NoError(t, err)
+
+
+	// It's okay to supply no postquantum key for this cert,
+	// as long as there is a pq signing key from the issuer
+	var empty *PublicKey = nil
+	_, err = BuildAltPublicKeyExtensions(empty, ck.Public(), &ms)
+	require.NoError(t, err)
+	_, err = BuildAltPublicKeyExtensions(nil, ck.Public(), &ms)
 	require.NoError(t, err)
 }
 
 func TestBuildAltPublicKeyInfoExtensionsError(t *testing.T) {
+	// Make up some nice key material
+	pk, _, err := KeyPair()
+	require.NoError(t, err)
+	_, sk, err := KeyPair()
+	ms := mockSigner{sk: sk}
+	require.NoError(t, err)
+
 	// An incorrect keytype passed should compile,
 	// but return an error.
 	ecdsaK := ecdsa.PublicKey{}
-	_, err := BuildAltPublicKeyExtensions(&ecdsaK)
+	_, err = BuildAltPublicKeyExtensions(&ecdsaK, &ecdsaK, &ms)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not a known OQS key type")
 
 	// A correct keytype with an unknown algorithm
 	// should return an error.
-	pk, _, err := KeyPair()
-	require.NoError(t, err)
 	pk.Sig.Algorithm = "I am not a real OQS Algorithm"
-	_, err = BuildAltPublicKeyExtensions(&pk)
+	_, err = BuildAltPublicKeyExtensions(&pk, &ecdsaK, &ms)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unknown OQS algorithm name")
 }
 
-func TestParseAltPublicKeyExtensions(t *testing.T) {
-	pk, _, err := KeyPair()
-	require.NoError(t, err)
+func TestParseSubjectAltPublicKeyInfoExtension(t *testing.T) {
 	for sigAlg, _ := range(oidMap) {
 		t.Run(string(sigAlg), func(t *testing.T) {
-			// In general, changing the key algorithm results in an invalid key.
-			// However, nothing in the marshalling/unmarshalling should check that Pk is
-			// valid for its algorithm.
-			// Thus, we can test all the algorithms without generating a new keypair
-			// for each by simply changing the SigInfo algorithm name.
-			pk.Sig.Algorithm = sigAlg
-			extensions, err := BuildAltPublicKeyExtensions(&pk)
+			// re-initialize Sig with new algorithm
+			DestroySig()
+			err := InitSig(sigAlg)
 			require.NoError(t, err)
-			key, err := ParseAltPublicKeyExtensions(extensions)
+
+			// generate some nice key material
+			pk1, _, err := KeyPair()
+			require.NoError(t, err)
+			pk2, sk2, err := KeyPair()
+			require.NoError(t, err)
+			ms := mockSigner{sk: sk2}
+			ck, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			require.NoError(t, err)
+
+			extensions, err := BuildAltPublicKeyExtensions(&pk1, ck.Public(), &ms)
+			require.NoError(t, err)
+
+			// First, let's check that we can get the correct quantum public key for the cert subject
+			key, err := ParseSubjectAltPublicKeyInfoExtension(extensions)
 			require.NotNil(t, key)
 			require.NoError(t, err)
-			oqsKey, ok := key.(*PublicKey)
-			require.True(t, ok)
-			require.Equal(t, oqsKey.Pk, pk.Pk)
+			require.Equal(t, key.Pk, pk1.Pk)
 			// require.Equal *can* compare SigType objects, but it gives much more useful error messages
 			// for comparing string types.
-			require.Equal(t, string(oqsKey.Sig.Algorithm), string(pk.Sig.Algorithm))
+			require.Equal(t, string(key.Sig.Algorithm), string(pk1.Sig.Algorithm))
+
+			// Next, we'll check that the signature matches
+			ckBytes, err := x509.MarshalPKIXPublicKey(ck.Public())
+			require.NoError(t, err)
+			km := buildKmMessage(pk1.Pk, ckBytes)
+			sig, err := parseAltSignatureValueExtension(extensions)
+			require.NoError(t, err)
+			isValid, err := Verify(pk2, sig, km)
+			require.NoError(t, err)
+			require.True(t, isValid)
 		})
 	}
 
@@ -191,7 +246,30 @@ func TestParseAltPublicKeyExtensions(t *testing.T) {
 			Value: []byte("some other extension"),
 		},
 	}
-	key, err := ParseAltPublicKeyExtensions(extensions)
+	key, err := ParseSubjectAltPublicKeyInfoExtension(extensions)
 	require.NoError(t, err)
 	require.Nil(t, key)
+}
+
+func TestParseSubjectAltPublicKeyInfoExtensionError(t *testing.T) {
+	// generate some nice key material
+	pk, _, err := KeyPair()
+	require.NoError(t, err)
+	_, sk, err := KeyPair()
+	require.NoError(t, err)
+	ms := mockSigner{sk: sk}
+	ck, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	extensions1, err := BuildAltPublicKeyExtensions(&pk, ck.Public(), &ms)
+	require.NoError(t, err)
+	extensions2, err := BuildAltPublicKeyExtensions(&pk, ck.Public(), &ms)
+	require.NoError(t, err)
+
+	// This should give us an error because we expect only one of each AltPublicKey extension
+	extensions := append(extensions1, extensions2...)
+	_, err = ParseSubjectAltPublicKeyInfoExtension(extensions)
+	require.Error(t, err)
+	_, err = parseAltSignatureValueExtension(extensions)
+	require.Error(t, err)
 }

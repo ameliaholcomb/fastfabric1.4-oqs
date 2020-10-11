@@ -76,10 +76,9 @@ func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
 		return err
 	}
 
-	// TODO(amelia): flag-guard this or something.
 	// Only generate hybrid quantum-safe identities for peers and orderers.
 	// The fabric client does not currently support anything but ECDSA.
-	qPubKey := &oqs.PublicKey{}
+	var qPubKey *oqs.PublicKey = nil
 	nodeName := nodeOUMap[nodeType]
 	if nodeName == PEEROU || nodeName == ORDEREROU {
 		// generate quantum-safe private key, which saves both public and private key in the Keystore
