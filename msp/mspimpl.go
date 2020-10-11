@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/hyperledger/fabric/bccsp/signer"
 	"github.com/hyperledger/fabric/bccsp/utils"
+	oqs "github.com/hyperledger/fabric/external_crypto"
 	m "github.com/hyperledger/fabric/protos/msp"
 	"github.com/pkg/errors"
 )
@@ -739,6 +740,15 @@ func (msp *bccspmsp) getUniqueValidationChain(cert *x509.Certificate, opts x509.
 	// be unclarity about who owns the identity
 	if len(validationChains) != 1 {
 		return nil, errors.Errorf("this MSP only supports a single validation chain, got %d", len(validationChains))
+	}
+
+	// In addition, check that the validation chain has quantum-safe signatures, where required.
+	// Ideally, this would happen in the core x509 library (cert.Verify, above), but instead we run it in the
+	// local x509 library for post-quantum crypto, external_crypto (oqs.Validate())
+	// If the root CA does not have a post-quantum key extension, this Validation will return immediately without error.
+	err = oqs.Validate(validationChains[0])
+	if err != nil {
+		return nil, errors.WithMessage(err, "the supplied identity does not have a valid post-quantum certificate")
 	}
 
 	return validationChains[0], nil
