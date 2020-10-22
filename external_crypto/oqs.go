@@ -143,57 +143,59 @@ import (
 	"github.com/pkg/errors"
 )
 
-type SigType string
-
-const (
-	SigPicnicL1FS SigType = "picnic_L1_FS"
-
-	SigPicnicL1UR SigType = "picnic_L1_UR"
-
-	SigPicnicL3FS SigType = "picnic_L3_FS"
-
-	SigPicnicL3UR SigType = "picnic_L3_UR"
-
-	SigPicnicL5FS SigType = "picnic_L5_FS"
-
-	SigPicnicL5UR SigType = "picnic_L5_UR"
-
-	SigPicnic2L1FS SigType = "picnic2_L1_FS"
-
-	SigPicnic2L3FS SigType = "picnic2_L3_FS"
-
-	SigPicnic2L5FS SigType = "picnic2_L5_FS"
-
-	SigqTESLAI SigType = "qTesla-p-I"
-
-	SigqTESLAIII SigType = "qTesla-p-III"
-
-	SigDilithium_2 SigType = "DILITHIUM_2"
-
-	SigDilithium_3 SigType = "DILITHIUM_3"
-
-	SigDilithium_4 SigType = "DILITHIUM_4"
-
-	SigMqdss_31_48 SigType = "MQDSS-31-48"
-
-	SigMqdss_31_64 SigType = "MQDSS-31-64"
-
-	SigSphincs_haraka_128f_robust SigType = "SPHINCS+-Haraka-128f-robust"
-)
-
-
-type AlgType string
-
 const (
 	AlgNistKat AlgType = "NIST-KAT"
 	defaultLibPath string = "liboqs.so"
-	defaultSigType SigType = SigDilithium_2
+	SIG_NAME SigType = "DILITHIUM_2"
 )
 
 var errAlreadyClosed = errors.New("already closed")
 var errAlgDisabledOrUnknown = errors.New("Signature algorithm is unknown or disabled")
 
 var operationFailed C.libResult = C.ERR_OPERATION_FAILED
+
+type SigType string
+type AlgType string
+
+// List of enabled signature algorithms, populated by init()
+var enabledSigs []SigType
+
+// List of supported signature algorithms, populated by init()
+var supportedSigs []SigType
+
+func MaxNumberSigs() int {
+	return int(C.OQS_SIG_alg_count())
+}
+
+func IsSigEnabled(algName SigType) bool {
+	result := C.OQS_SIG_alg_is_enabled(C.CString(string(algName)))
+	return result != 0
+}
+
+func SigName(algID int) (SigType, error) {
+	if algID >= MaxNumberSigs() {
+		return "", errors.New("algorithm ID out of range")
+	}
+	return SigType(C.GoString(C.OQS_SIG_alg_identifier(C.size_t(algID)))), nil
+}
+
+func SupportedSigs() []SigType {
+	return supportedSigs
+}
+
+func EnabledSigs() []SigType {
+	return enabledSigs
+}
+
+func initSigTypes() {
+	for i := 0; i < MaxNumberSigs(); i++ {
+		sigName, _ := SigName(i)
+		supportedSigs = append(supportedSigs, sigName)
+		if IsSigEnabled(sigName) {
+			enabledSigs = append(enabledSigs, sigName)
+		}
+	}
+}
 
 type SecretKey struct {
 	Sk []byte
@@ -311,7 +313,7 @@ func libError(result C.libResult, msg string, a ...interface{}) error {
 
 
 // InitSig may optionally specify a SigType.
-// If exactly one SigType is not supplied, Init will fall back to defaultSigType
+// If exactly one SigType is not supplied, Init will fall back to the first enabled Sig
 func InitSig(sigT ...SigType) (err error) {
 	if packageSig != nil {
 		return nil
@@ -322,7 +324,7 @@ func InitSig(sigT ...SigType) (err error) {
 			return err
 		}
 	}
-	cryptoAlg := defaultSigType
+	cryptoAlg := SIG_NAME
 	if len(sigT) == 1 {
 		cryptoAlg = sigT[0]
 
@@ -344,6 +346,14 @@ func InitLib() (err error) {
 		return err
 	}
 	packageLib = lib
+
+	// Using the library variables,
+	// initialize the list of available signatures
+	initSigTypes()
+	// For now, we will also generate oids for those signatures,
+	// based on their order in liboqs.
+	// Ideally, these OIDs would be specified in liboqs itself.
+	generateOids()
 	return nil
 }
 

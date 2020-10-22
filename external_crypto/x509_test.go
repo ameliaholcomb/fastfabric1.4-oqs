@@ -170,8 +170,6 @@ func TestBuildAltPublicKeyInfoExtensionsSuccess(t *testing.T) {
 	var empty *PublicKey = nil
 	_, err = BuildAltPublicKeyExtensions(empty, ck.Public(), &ms)
 	require.NoError(t, err)
-	_, err = BuildAltPublicKeyExtensions(nil, ck.Public(), &ms)
-	require.NoError(t, err)
 }
 
 func TestBuildAltPublicKeyInfoExtensionsError(t *testing.T) {

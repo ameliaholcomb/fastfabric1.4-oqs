@@ -17,44 +17,13 @@ import (
 
 const UnknownKeyAlgorithm SigType = "UnknownKeyAlgorithm"
 type Algorithm = SigType
-var (
-	oidPicnicL1FS     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 43}
-	oidPicnicL1UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 44}
-	oidPicnic2L1FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 45}
-	oidPicnicL3FS     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 46}
-	oidPicnicL3UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 47}
-	oidPicnic2L3FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 48}
-	oidPicnicL5FS     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 49}
-	oidPicnicL5UR     = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 50}
-	oidPicnic2L5FS    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 51}
-	oidqTESLAI        = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 53}
-	oidqTESLAIII      = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 58}
-	oidDilithium_2    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 21}
-	oidDilithium_3    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 22}
-	oidDilithium_4    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 23}
-	oidMqdss_31_48    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 41}
-	oidMqdss_31_64    = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 42}
-	oidSphincs_haraka_128f_robust = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 100} // Haraka not included?
-)
 
-var oidMap = map[SigType]asn1.ObjectIdentifier {
-	SigPicnicL1FS  : oidPicnicL1FS,
-	SigPicnicL1UR  : oidPicnicL1UR,
-	SigPicnicL3FS  : oidPicnicL3FS,
-	SigPicnicL3UR  : oidPicnicL3UR,
-	SigPicnicL5FS  : oidPicnicL5FS,
-	SigPicnicL5UR  : oidPicnicL5UR,
-	SigPicnic2L1FS  : oidPicnic2L1FS,
-	SigPicnic2L3FS  : oidPicnic2L3FS,
-	SigPicnic2L5FS  : oidPicnic2L5FS,
-	SigqTESLAI  : oidqTESLAI,
-	SigqTESLAIII  : oidqTESLAIII,
-	SigDilithium_2  : oidDilithium_2,
-	SigDilithium_3  : oidDilithium_3,
-	SigDilithium_4  : oidDilithium_4,
-	SigMqdss_31_48  : oidMqdss_31_48,
-	SigMqdss_31_64  : oidMqdss_31_64,
-	SigSphincs_haraka_128f_robust  : oidSphincs_haraka_128f_robust,
+var oidMap = map[SigType]asn1.ObjectIdentifier {}
+
+func generateOids() {
+	for i, sig := range enabledSigs {
+		oidMap[sig] = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 40+i}
+	}
 }
 
 func getAlgorithmFromOID(oid asn1.ObjectIdentifier) Algorithm {

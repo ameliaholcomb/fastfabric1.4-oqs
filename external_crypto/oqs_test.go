@@ -13,30 +13,6 @@ var libPath = "liboqs.so"
 
 func TestRoundTrip(t *testing.T) {
 
-	sigs := []SigType{
-		SigqTESLAI,
-		SigqTESLAIII,
-
-		SigPicnicL1FS,
-		SigPicnicL1UR,
-		SigPicnicL3FS,
-		SigPicnicL3UR,
-		SigPicnicL5FS,
-		SigPicnicL5UR,
-		SigPicnic2L1FS,
-		SigPicnic2L3FS,
-		SigPicnic2L5FS,
-
-		SigDilithium_2,
-		SigDilithium_3,
-		SigDilithium_4,
-
-		SigMqdss_31_48,
-		SigMqdss_31_64,
-		SigSphincs_haraka_128f_robust,
-
-	}
-
 	err := InitLib()
 	require.NoError(t, err)
 	// Make random number generation deterministic in order to test against
@@ -51,8 +27,11 @@ func TestRoundTrip(t *testing.T) {
 	h12 := strings.ToUpper(hex.EncodeToString(message))
 	fmt.Printf("%s\n", h12)
 
-	for _, sigAlg := range sigs {
+	for _, sigAlg := range enabledSigs {
 		t.Run(string(sigAlg), func(t *testing.T) {
+			if string(sigAlg) == "DEFAULT" {
+				return
+			}
 			// re-initialize Sig with new algorithm
 			DestroySig()
 			err = InitSig(sigAlg)
@@ -63,7 +42,7 @@ func TestRoundTrip(t *testing.T) {
 			require.NoError(t, err)
 
 			publicKey, secretKey, err := KeyPair()
-			assert.Equal(t, publicKey.Sig.Algorithm, sigAlg)
+			assert.Equal(t, string(publicKey.Sig.Algorithm), string(sigAlg))
 			require.NoError(t, err)
 			
 			signature, err := Sign(secretKey, message)
@@ -104,7 +83,7 @@ func TestLibraryClosed(t *testing.T) {
 	const expectedMsg = "library closed"
 
 	t.Run("GetSIG", func(t *testing.T) {
-		_, err := GetSign(l, SigPicnicL1FS)
+		_, err := GetSign(l, EnabledSigs()[0])
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), expectedMsg)
 	})
