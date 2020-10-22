@@ -158,7 +158,7 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 	mspIdentityLogger.Debug("Verifying signature")
 
 	// Compute Hash
-	hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
+	hashOpt, err := id.getSigningHashOpt()
 	if err != nil {
 		return errors.WithMessage(err, "failed getting hash function options")
 	}
@@ -222,14 +222,18 @@ func (id *identity) Serialize() ([]byte, error) {
 	return idBytes, nil
 }
 
-func (id *identity) getHashOpt(hashFamily string) (bccsp.HashOpts, error) {
-	switch hashFamily {
-	case bccsp.SHA2:
-		return bccsp.GetHashOpt(bccsp.SHA256)
-	case bccsp.SHA3:
-		return bccsp.GetHashOpt(bccsp.SHA3_256)
+func (id *identity) getSigningHashOpt() (bccsp.HashOpts, error) {
+	// Obtain the appropriate hash for signing and verifying,
+	// based on the identity signature algorithm
+
+	if id.qPk != nil {
+		// In a post-quantum world, we must always use at least SHA-384
+		return bccsp.GetHashOpt(bccsp.SHA384)
 	}
-	return nil, errors.Errorf("hash familiy not recognized [%s]", hashFamily)
+
+	// TODO: Using id.pk, determine an appropriate hashing algorithm
+	return bccsp.GetHashOpt(bccsp.SHA256)
+
 }
 
 type signingidentity struct {
@@ -254,7 +258,7 @@ func (id *signingidentity) Sign(msg []byte) ([]byte, error) {
 	//mspIdentityLogger.Infof("Signing message")
 
 	// Compute Hash
-	hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
+	hashOpt, err := id.getSigningHashOpt()
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed getting hash function options")
 	}

@@ -513,36 +513,6 @@ func TestSignAndVerify(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestSignAndVerifyFailures(t *testing.T) {
-	msg := []byte("foo")
-
-	id, err := localMspBad.GetDefaultSigningIdentity()
-	if err != nil {
-		t.Fatalf("GetSigningIdentity should have succeeded")
-		return
-	}
-
-	hash := id.(*signingidentity).msp.cryptoConfig.SignatureHashFamily
-	id.(*signingidentity).msp.cryptoConfig.SignatureHashFamily = "barf"
-
-	sig, err := id.Sign(msg)
-	assert.Error(t, err)
-
-	id.(*signingidentity).msp.cryptoConfig.SignatureHashFamily = hash
-
-	sig, err = id.Sign(msg)
-	if err != nil {
-		t.Fatalf("Sign should have succeeded")
-		return
-	}
-
-	id.(*signingidentity).msp.cryptoConfig.SignatureHashFamily = "barf"
-
-	err = id.Verify(msg, sig)
-	assert.Error(t, err)
-
-	id.(*signingidentity).msp.cryptoConfig.SignatureHashFamily = hash
-}
 
 func TestSignAndVerifyOtherHash(t *testing.T) {
 	id, err := localMsp.GetDefaultSigningIdentity()
