@@ -7,7 +7,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"errors"
+	"fmt"
+	"github.com/pkg/errors"
 )
 
 // MVP implementation for marshalling and unmarshalling OQS keys.
@@ -15,25 +16,8 @@ import (
 // there will be forthcoming RFCs that precisely describe their expected asn1 format, etc.
 // Eventually, these should be supported by the Go SDK crypto packages directly.
 
-const UnknownKeyAlgorithm SigType = "UnknownKeyAlgorithm"
+
 type Algorithm = SigType
-
-var oidMap = map[SigType]asn1.ObjectIdentifier {}
-
-func generateOids() {
-	for i, sig := range enabledSigs {
-		oidMap[sig] = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 40+i}
-	}
-}
-
-func getAlgorithmFromOID(oid asn1.ObjectIdentifier) Algorithm {
-	for alg, id := range oidMap {
-		if oid.Equal(id) {
-			return alg
-		}
-	}
-	return UnknownKeyAlgorithm
-}
 
 // pkixPublicKey reflects a PKIX public key structure. See SubjectPublicKeyInfo
 // in RFC 3280.
@@ -49,24 +33,18 @@ type pkixPublicKeyUnpack struct {
 	PublicKey asn1.BitString
 }
 
-func getAlgorithmIdentifier(alg SigType) (ai pkix.AlgorithmIdentifier, err error) {
-	oid, ok := oidMap[alg]
-	if !ok {
-		return ai, errors.New("unknown OQS algorithm name") }
-	ai.Algorithm = oid
-	// The OQS public key algorithms do not require parameters,
-	// therefore a NULL parameters value is required.
-	ai.Parameters = asn1.NullRawValue
-	return ai, nil
-}
 
 func MarshalPKIXPublicKey(pub interface{}) ([]byte, error)  {
+	l, err := GetLib()
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to marshal OQS key")
+	}
 	pk, ok := pub.(*PublicKey)
 	if !ok {
 		return nil, errors.New("key is not a known OQS key type")
 	}
 
-	publicKeyAlgorithm, err := getAlgorithmIdentifier(pk.Sig.Algorithm)
+	publicKeyAlgorithm, err := l.GetAlgorithmIdentifier(pk.Sig.Algorithm)
 	if err != nil {
 		return nil, err
 	}
@@ -82,15 +60,20 @@ func MarshalPKIXPublicKey(pub interface{}) ([]byte, error)  {
 }
 
 func ParsePKIXPublicKey(derBytes []byte) (interface{}, error) {
+	l, err := GetLib()
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to parse OQS key")
+	}
 	var pku pkixPublicKeyUnpack
 	if rest, err := asn1.Unmarshal(derBytes, &pku); err != nil {
 		return nil, err
 	} else if len(rest) != 0 {
 		return nil, errors.New("x509: trailing data after ASN.1 of public-key")
 	}
-	alg := getAlgorithmFromOID(pku.Algorithm.Algorithm)
+	alg := l.GetAlgorithmFromOID(pku.Algorithm.Algorithm)
 	if alg == UnknownKeyAlgorithm {
-		return nil, errors.New("unknown OQS public key algorithm")
+		return nil, errors.New(fmt.Sprintf(
+			"unknown OQS public key algorithm with id %s", pku.Algorithm.Algorithm.String()))
 	}
 	asn1Data := pku.PublicKey.RightAlign()
 	s := OQSSigInfo {
@@ -114,11 +97,15 @@ type pkixPrivateKeyUnpack struct {
 }
 
 func MarshalPKIXPrivateKey(pub interface{}) ([]byte, error) {
+	l, err := GetLib()
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to marshal OQS key")
+	}
 	sk, ok := pub.(*SecretKey)
 	if !ok {
 		return nil, errors.New("key is not a known OQS key type")
 	}
-	privateKeyAlgorithm, err := getAlgorithmIdentifier(sk.Sig.Algorithm)
+	privateKeyAlgorithm, err := l.GetAlgorithmIdentifier(sk.Sig.Algorithm)
 	if err != nil {
 		return nil, err
 	}
@@ -139,13 +126,17 @@ func MarshalPKIXPrivateKey(pub interface{}) ([]byte, error) {
 }
 
 func ParsePKIXPrivateKey(derBytes []byte) (interface{}, error) {
+	l, err := GetLib()
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to parse OQS key")
+	}
 	var pku pkixPrivateKeyUnpack
 	if rest, err := asn1.Unmarshal(derBytes, &pku); err != nil {
 		return nil, err
 	} else if len(rest) != 0 {
 		return nil, errors.New("x509: trailing data after ASN.1 of private-key")
 	}
-	alg := getAlgorithmFromOID(pku.Algorithm.Algorithm)
+	alg := l.GetAlgorithmFromOID(pku.Algorithm.Algorithm)
 	if alg == UnknownKeyAlgorithm {
 		return nil, errors.New("unknown OQS public key algorithm")
 	}
@@ -178,7 +169,11 @@ type KeyMaterial struct{
 }
 
 func buildSubjectAltPublicKeyInfoExt(qk *PublicKey) (pkix.Extension, error) {
-	oid, err := getAlgorithmIdentifier(qk.Sig.Algorithm)
+	l, err := GetLib()
+	if err != nil {
+		return pkix.Extension{}, errors.Wrap(err, "Unable to build subjectaltpublickeyinfo extension")
+	}
+	oid, err := l.GetAlgorithmIdentifier(qk.Sig.Algorithm)
 	if err != nil {
 		return pkix.Extension{}, err
 	}
@@ -285,6 +280,10 @@ func BuildAltPublicKeyExtensions(quantumKey interface{}, classicalKey interface{
 }
 
 func ParseSubjectAltPublicKeyInfoExtension(extensions []pkix.Extension) (*PublicKey, error) {
+	l, err := GetLib()
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to parse subjectaltpublickeyinfo extension")
+	}
 	var publicKey *PublicKey = nil
 	for _, ext := range(extensions) {
 		if ext.Id.Equal(oidSubjectAltPublicKeyInfo) {
@@ -297,7 +296,7 @@ func ParseSubjectAltPublicKeyInfoExtension(extensions []pkix.Extension) (*Public
 			} else if len(rest) != 0 {
 				return nil, errors.New("x509: trailing data after ASN.1 of SubjectAltPublicKey")
 			}
-			alg := getAlgorithmFromOID(pku.Algorithm.Algorithm)
+			alg := l.GetAlgorithmFromOID(pku.Algorithm.Algorithm)
 			if alg == UnknownKeyAlgorithm {
 				return nil, errors.New("unknown OQS public key algorithm")
 			}

@@ -1,5 +1,7 @@
 package oqs
+
 //NOTE: THE COMMENTS BELOW ARE CODE WHICH GETS COMPILED (THEY ARE CALLED PREAMBLE).IT'S A UNIQUE/WEIRD FEATURE IN CGO.
+// ALSO NOTE: THERE MUST BE NO NEWLINE BETWEEN THE END OF THE COMMENT AND THE IMPORT "C" LINE
 
 /*
    #cgo CFLAGS: -Iinclude
@@ -26,87 +28,6 @@ package oqs
    typedef struct {
      void *handle;
    } ctx;
-
-   char *errorString(libResult r) {
-   	switch (r) {
-   	case ERR_CANNOT_LOAD_LIB:
-   		return "cannot load library";
-   	case ERR_CONTEXT_CLOSED:
-   		return "library closed";
-   	case ERR_MEM:
-   		return "out of memory";
-   	case ERR_NO_FUNCTION:
-   		return "library missing required function";
-   	case ERR_OPERATION_FAILED:
-
-   		return "operation failed";
-   	default:
-   		return "unknown error";
-   	}
-   }
-
-   libResult New(const char *path, ctx **c) {
-   	*c = malloc(sizeof(ctx));
-   	if (!(*c)) {
-   		return ERR_MEM;
-   	}
-   	(*c)->handle = dlopen(path, RTLD_NOW);
-   	if (NULL == (*c)->handle) {
-   		free(*c);
-   		return ERR_CANNOT_LOAD_LIB;
-   	}
-   	return ERR_OK;
-   }
-
-   libResult SetRandomAlg(const ctx *ctx, const char *name) {
-   	OQS_STATUS status = OQS_randombytes_switch_algorithm(name);
-   	if (status != OQS_SUCCESS) {
-   		return ERR_OPERATION_FAILED;
-   	}
-   	return ERR_OK;
-   }
-
-   libResult GetRandomBytes(uint8_t *buf,int nbytes) {
-   	OQS_randombytes(buf,nbytes);
-
-   	return ERR_OK;
-   }
-
-   libResult GetSign(const ctx *ctx, const char *name, OQS_SIG **sig) {
-   	if (!ctx->handle) {
-   		return ERR_CONTEXT_CLOSED;
-   	}
-
-   	OQS_SIG *(*func)(const char *);
-   	*(void **)(&func) = dlsym(ctx->handle, "OQS_SIG_new");
-   	if (NULL == func) {
-   		return ERR_NO_FUNCTION;
-   	}
-   	*sig = (*func)(name);
-   	return ERR_OK;
-   }
-
-   libResult FreeSig(ctx *ctx, OQS_SIG *sig) {
-   	if (!ctx->handle) {
-   		return ERR_CONTEXT_CLOSED;
-   	}
-   	void (*func)(OQS_SIG*);
-   	*(void **)(&func) = dlsym(ctx->handle, "OQS_SIG_free");
-   	if (NULL == func) {
-   		return ERR_NO_FUNCTION;
-   	}
-   	(*func)(sig);
-   	return ERR_OK;
-   }
-
-   libResult Close(ctx *ctx) {
-   	if (!ctx->handle) {
-   		return ERR_CONTEXT_CLOSED;
-   	}
-   	dlclose(ctx->handle);
-   	ctx->handle = NULL;
-   	return ERR_OK;
-   }
 
    libResult KeyPair(const OQS_SIG *sig, uint8_t *public_key, uint8_t *secret_key) {
 
@@ -137,114 +58,41 @@ package oqs
 */
 import "C"
 import (
-	"fmt"
 	"unsafe"
-
-	"github.com/pkg/errors"
 )
 
-const (
-	AlgNistKat AlgType = "NIST-KAT"
-	defaultLibPath string = "liboqs.so"
-	SIG_NAME SigType = "DILITHIUM_2"
-)
 
-var errAlreadyClosed = errors.New("already closed")
-var errAlgDisabledOrUnknown = errors.New("Signature algorithm is unknown or disabled")
-
-var operationFailed C.libResult = C.ERR_OPERATION_FAILED
-
-type SigType string
-type AlgType string
-
-// List of enabled signature algorithms, populated by init()
-var enabledSigs []SigType
-
-// List of supported signature algorithms, populated by init()
-var supportedSigs []SigType
-
-func MaxNumberSigs() int {
-	return int(C.OQS_SIG_alg_count())
-}
-
-func IsSigEnabled(algName SigType) bool {
-	result := C.OQS_SIG_alg_is_enabled(C.CString(string(algName)))
-	return result != 0
-}
-
-func SigName(algID int) (SigType, error) {
-	if algID >= MaxNumberSigs() {
-		return "", errors.New("algorithm ID out of range")
+func getSig(sigType SigType) (*OQSSig, error) {
+	lib, err := GetLib()
+	if err != nil {
+		return nil, err
 	}
-	return SigType(C.GoString(C.OQS_SIG_alg_identifier(C.size_t(algID)))), nil
+	return lib.GetSig(sigType)
 }
 
-func SupportedSigs() []SigType {
-	return supportedSigs
-}
-
-func EnabledSigs() []SigType {
-	return enabledSigs
-}
-
-func initSigTypes() {
-	for i := 0; i < MaxNumberSigs(); i++ {
-		sigName, _ := SigName(i)
-		supportedSigs = append(supportedSigs, sigName)
-		if IsSigEnabled(sigName) {
-			enabledSigs = append(enabledSigs, sigName)
-		}
-	}
-}
-
-type SecretKey struct {
-	Sk []byte
-	PublicKey
-}
-
-type PublicKey struct {
-	Pk []byte
-	Sig OQSSigInfo
-}
-
-type OQSSig struct {
-	sig *C.OQS_SIG
-	ctx *C.ctx
-}
-
-type OQSLib struct {
-	ctx *C.ctx
-}
-
-type OQSSigInfo struct {
-	Algorithm SigType
-}
-
-var packageLib *OQSLib
-var packageSig *OQSSig
-
-func KeyPair() (publicKey PublicKey, secretKey SecretKey, err error) {
-	if packageSig == nil {
-		InitSig()
+func KeyPair(algName SigType) (publicKey PublicKey, secretKey SecretKey, err error) {
+	s, err := getSig(algName)
+	if err != nil {
+		return PublicKey{}, SecretKey{}, err
 	}
 
-	pubKeyLen := C.int(packageSig.sig.length_public_key)
+	pubKeyLen := C.int(s.sig.length_public_key)
 	pk := C.malloc(C.ulong(pubKeyLen))
 	defer C.free(unsafe.Pointer(pk))
 
-	secKeyLen := C.int(packageSig.sig.length_secret_key)
+	secKeyLen := C.int(s.sig.length_secret_key)
 	sk := C.malloc(C.ulong(secKeyLen))
 	defer C.free(unsafe.Pointer(sk))
 
-	res := C.KeyPair(packageSig.sig, (*C.uchar)(pk), (*C.uchar)(sk))
+	res := C.KeyPair(s.sig, (*C.uchar)(pk), (*C.uchar)(sk))
 	if res != C.ERR_OK {
 		return PublicKey{}, SecretKey{}, libError(res, "key pair generation failed")
 	}
 
-	s := OQSSigInfo{
-		Algorithm: SigType(C.GoString(packageSig.sig.method_name)),
+	sig := OQSSigInfo{
+		Algorithm: SigType(C.GoString(s.sig.method_name)),
 	}
-	publicKey = PublicKey { Pk: C.GoBytes(pk, pubKeyLen), Sig: s}
+	publicKey = PublicKey { Pk: C.GoBytes(pk, pubKeyLen), Sig: sig}
 	secretKey = SecretKey{
 		C.GoBytes(sk, secKeyLen),
 		publicKey,
@@ -254,12 +102,10 @@ func KeyPair() (publicKey PublicKey, secretKey SecretKey, err error) {
 
 
 func Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
-	if packageSig == nil {
-		InitSig()
-	}
+	s, err := getSig(secretKey.Sig.Algorithm)
 	var signatureLen C.ulong
 
-	sig := C.malloc(C.ulong(packageSig.sig.length_signature))
+	sig := C.malloc(C.ulong(s.sig.length_signature))
 	defer C.free(unsafe.Pointer(sig))
 
 	mes_len := C.size_t(len(message))
@@ -269,7 +115,7 @@ func Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
 	sk := C.CBytes(secretKey.Sk)
 	defer C.free(sk)
 
-	res := C.Sign(packageSig.sig, (*C.uchar)(sig), &signatureLen, (*C.uchar)(msg), mes_len, (*C.uchar)(sk))
+	res := C.Sign(s.sig, (*C.uchar)(sig), &signatureLen, (*C.uchar)(msg), mes_len, (*C.uchar)(sk))
 	if res != C.ERR_OK {
 		return nil, libError(res, "signing failed")
 	}
@@ -279,9 +125,7 @@ func Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
 
 
 func Verify(publicKey PublicKey, signature []byte, message []byte) (assert bool, err error) {
-	if packageSig == nil {
-		InitSig()
-	}
+	s, err := getSig(publicKey.Sig.Algorithm)
 	mes_len := C.ulong(len(message))
 	msg := C.CBytes(message)
 	defer C.free(msg)
@@ -293,173 +137,11 @@ func Verify(publicKey PublicKey, signature []byte, message []byte) (assert bool,
 	pk := C.CBytes(publicKey.Pk)
 	defer C.free(pk)
 
-	res := C.Verify(packageSig.sig, (*C.uchar)(msg), mes_len, (*C.uchar)(sgn), sign_len, (*C.uchar)(pk))
+	res := C.Verify(s.sig, (*C.uchar)(msg), mes_len, (*C.uchar)(sgn), sign_len, (*C.uchar)(pk))
 	if res != C.ERR_OK {
 		return false, libError(res, "verification failed")
 	}
 
 	return true, nil
-}
-
-func libError(result C.libResult, msg string, a ...interface{}) error {
-
-	if result == C.ERR_OPERATION_FAILED {
-		return errors.Errorf(msg, a...)
-	}
-
-	str := C.GoString(C.errorString(result))
-	return errors.Errorf("%s: %s", fmt.Sprintf(msg, a...), str)
-}
-
-
-// InitSig may optionally specify a SigType.
-// If exactly one SigType is not supplied, Init will fall back to the first enabled Sig
-func InitSig(sigT ...SigType) (err error) {
-	if packageSig != nil {
-		return nil
-	}
-	if packageLib == nil {
-		err = InitLib()
-		if err != nil {
-			return err
-		}
-	}
-	cryptoAlg := SIG_NAME
-	if len(sigT) == 1 {
-		cryptoAlg = sigT[0]
-
-	}
-	sig, err := GetSign(packageLib, cryptoAlg)
-	if err != nil {
-		return errors.Wrapf(err, "Unable to load OQS crypto sig for %s", cryptoAlg)
-	}
-	packageSig = sig
-	return nil
-}
-
-func InitLib() (err error) {
-	if packageLib != nil {
-		return nil
-	}
-	lib, err := LoadLib(defaultLibPath)
-	if err != nil {
-		return err
-	}
-	packageLib = lib
-
-	// Using the library variables,
-	// initialize the list of available signatures
-	initSigTypes()
-	// For now, we will also generate oids for those signatures,
-	// based on their order in liboqs.
-	// Ideally, these OIDs would be specified in liboqs itself.
-	generateOids()
-	return nil
-}
-
-func DestroySig() (err error) {
-	if packageSig == nil {
-		return nil
-	}
-	err = CloseSig(packageSig)
-	if err == nil {
-		packageSig = nil
-	}
-	return err
-}
-
-
-func DestroyLib() (err error) {
-	if packageLib == nil {
-		return nil
-	}
-	err = CloseLib(packageLib)
-	if err == nil {
-		packageLib = nil
-	}
-	return err
-}
-
-func LoadLib(path string) (*OQSLib, error) {
-	p := C.CString(path)
-	defer C.free(unsafe.Pointer(p))
-
-	var ctx *C.ctx
-	res := C.New(p, &ctx)
-	if res != C.ERR_OK {
-		return nil, libError(res, "failed to load module at %q", path)
-	}
-
-	return &OQSLib{ctx: ctx}, nil
-}
-
-func CloseLib(lib *OQSLib) (error) {
-	res := C.Close(lib.ctx)
-	if res != C.ERR_OK {
-		return libError(res, "failed to close library")
-	}
-	return nil
-}
-
-
-func GetSign(lib *OQSLib, alg SigType) (*OQSSig, error) {
-	cStr := C.CString(string(alg))
-	defer C.free(unsafe.Pointer(cStr))
-
-	var sigPtr *C.OQS_SIG
-
-	res := C.GetSign(lib.ctx, cStr, &sigPtr)
-	if res != C.ERR_OK {
-		return nil, libError(res, "failed to get Signature")
-	}
-
-	sig := &OQSSig{
-		sig: sigPtr,
-		ctx: lib.ctx,
-	}
-	if sig.sig == nil {
-		return nil, errAlgDisabledOrUnknown
-	}
-
-	return sig, nil
-}
-
-func CloseSig(sig *OQSSig) (error) {
-	if sig == nil {
-		return errAlreadyClosed
-	}
-	res := C.FreeSig(sig.ctx, sig.sig)
-	if res != C.ERR_OK {
-		return libError(res, "failed to free signature")
-	}
-
-	sig.sig = nil
-	return nil
-}
-
-func SetRandomAlg(lib *OQSLib, strAlg AlgType) (int, error) {
-	cStr := C.CString(string(strAlg))
-	defer C.free(unsafe.Pointer(cStr))
-
-	res := C.SetRandomAlg(lib.ctx, cStr)
-
-	if res != C.ERR_OK {
-		return -1, libError(res, "failed to get Alg")
-	}
-
-	return 1, nil
-}
-
-func GetRandomBytes(nbytes int) (randombytes []byte, err error) {
-	bytes := C.malloc(C.ulong(nbytes))
-	defer C.free(unsafe.Pointer(bytes))
-
-	res := C.GetRandomBytes((*C.uint8_t)(bytes), C.int(nbytes))
-
-	if res != C.ERR_OK {
-		return nil, libError(res, "failed to set bytes")
-	}
-
-	return C.GoBytes(bytes, C.int(nbytes)), nil
 }
 

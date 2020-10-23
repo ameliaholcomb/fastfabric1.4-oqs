@@ -41,7 +41,7 @@ type CA struct {
 
 // NewCA creates an instance of CA and saves the signing key pair in
 // baseDir/name
-func NewCA(baseDir, org, name, country, province, locality, orgUnit, streetAddress, postalCode string) (*CA, error) {
+func NewCA(baseDir, org, name, country, province, locality, orgUnit, streetAddress, postalCode string, genOQSAlg *string) (*CA, error) {
 
 	err := os.MkdirAll(baseDir, 0755)
 	if err != nil {
@@ -52,15 +52,6 @@ func NewCA(baseDir, org, name, country, province, locality, orgUnit, streetAddre
 		return nil, err
 	}
 
-	// Get a public and private post-quantum key
-	qPriv, qSigner, err := csp.GeneratePrivateKey(baseDir, &bccsp.OQSKeyGenOpts{Temporary:false})
-	if err != nil {
-		return nil, err
-	}
-	qPub, err := csp.GetQSPublicKey(qPriv)
-	if err != nil {
-		return nil, err
-	}
 
 	// get public signing certificate
 	ecPubKey, err := csp.GetECPublicKey(priv)
@@ -86,12 +77,24 @@ func NewCA(baseDir, org, name, country, province, locality, orgUnit, streetAddre
 	template.Subject = subject
 	template.SubjectKeyId = priv.SKI()
 
-	// Root certificate will sign its own public key material for post-quantum x509 extensions
-	exts, err := oqs.BuildAltPublicKeyExtensions(qPub, ecPubKey, qSigner)
-	if err != nil {
-		return nil, err
+	var qSigner crypto.Signer
+	if genOQSAlg != nil && *genOQSAlg != "" {
+		// Get a public and private post-quantum key
+		qPriv, qSigner, err := csp.GeneratePrivateKey(baseDir, &bccsp.OQSKeyGenOpts{Temporary:false, SignatureScheme: *genOQSAlg})
+		if err != nil {
+			return nil, err
+		}
+		qPub, err := csp.GetQSPublicKey(qPriv)
+		if err != nil {
+			return nil, err
+		}
+		// Root certificate will sign its own public key material for post-quantum x509 extensions
+		exts, err := oqs.BuildAltPublicKeyExtensions(qPub, ecPubKey, qSigner)
+		if err != nil {
+			return nil, err
+		}
+		template.ExtraExtensions = append(template.ExtraExtensions, exts...)
 	}
-	template.ExtraExtensions = append(template.ExtraExtensions, exts...)
 
 	x509Cert, err := genCertificateECDSA(baseDir, name, &template, &template,
 		ecPubKey, signer)

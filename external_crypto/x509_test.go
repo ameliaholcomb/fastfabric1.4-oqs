@@ -27,7 +27,7 @@ func (ms *mockSigner) Public() (crypto.PublicKey) {
 }
 
 func TestMarshalPKIXPublicKeySuccess(t *testing.T) {
-	pk, _, err := KeyPair()
+	pk, _, err := KeyPair("DEFAULT")
 	require.NoError(t, err)
 	_, err = MarshalPKIXPublicKey(&pk)
 	require.NoError(t, err)
@@ -43,7 +43,7 @@ func TestMarshalPKIXPublicKeyError(t *testing.T) {
 
 	// A correct keytype with an unknown algorithm
 	// should return an error.
-	pk, _, err := KeyPair()
+	pk, _, err := KeyPair("DEFAULT")
 	require.NoError(t, err)
 	pk.Sig.Algorithm = "I am not a real OQS Algorithm"
 	_, err = MarshalPKIXPublicKey(&pk)
@@ -52,17 +52,16 @@ func TestMarshalPKIXPublicKeyError(t *testing.T) {
 }
 
 func TestParsePKIXPublicKeySuccess(t *testing.T) {
-	pk, _, err := KeyPair()
+	l, err := GetLib()
 	require.NoError(t, err)
-
-	for sigAlg, _ := range(oidMap) {
+	for _, sigAlg := range(l.EnabledSigs()) {
 		t.Run(string(sigAlg), func(t *testing.T) {
-			// In general, changing the key algorithm results in an invalid key.
-			// However, nothing in the marshalling/unmarshalling should check that Pk is
-			// valid for its algorithm.
-			// Thus, we can test all the algorithms without generating a new keypair
-			// for each by simply changing the SigInfo algorithm name.
-			pk.Sig.Algorithm = sigAlg
+			if string(sigAlg) == "DEFAULT" {
+				return
+			}
+			// Make up some nice key material
+			pk, _, err := KeyPair(sigAlg)
+			require.NoError(t, err)
 			derBytes, err := MarshalPKIXPublicKey(&pk)
 			require.NoError(t, err)
 			key, err := ParsePKIXPublicKey(derBytes)
@@ -99,7 +98,7 @@ func TestParsePKIXPublicKeyError(t *testing.T) {
 }
 
 func TestMarshalPKIXPrivateKeySuccess(t *testing.T) {
-	_, sk, err := KeyPair()
+	_, sk, err := KeyPair("DEFAULT")
 	require.NoError(t, err)
 	_, err = MarshalPKIXPrivateKey(&sk)
 	require.NoError(t, err)
@@ -115,7 +114,7 @@ func TestMarshalPKIXSecretKeyError(t *testing.T) {
 
 	// A correct keytype with an unknown algorithm
 	// should return an error.
-	_, sk, err := KeyPair()
+	_, sk, err := KeyPair("DEFAULT")
 	require.NoError(t, err)
 	sk.Sig.Algorithm = "I am not a real OQS Algorithm"
 	_, err = MarshalPKIXPrivateKey(&sk)
@@ -124,17 +123,16 @@ func TestMarshalPKIXSecretKeyError(t *testing.T) {
 }
 
 func TestParsePKIXPrivateKeySuccess(t *testing.T) {
-	_, sk, err := KeyPair()
+	l, err := GetLib()
 	require.NoError(t, err)
-
-	for sigAlg, _ := range(oidMap) {
+	for _, sigAlg := range(l.EnabledSigs()) {
 		t.Run(string(sigAlg), func(t *testing.T) {
-			// In general, changing the key algorithm results in an invalid key.
-			// However, nothing in the marshalling/unmarshalling should check that Pk is
-			// valid for its algorithm.
-			// Thus, we can test all the algorithms without generating a new keypair
-			// for each by simply changing the SigInfo algorithm name.
-			sk.Sig.Algorithm = sigAlg
+			if string(sigAlg) == "DEFAULT" {
+				return
+			}
+			// Make up some nice key material
+			_, sk, err := KeyPair(sigAlg)
+			require.NoError(t, err)
 			derBytes, err := MarshalPKIXPrivateKey(&sk)
 			require.NoError(t, err)
 			key, err := ParsePKIXPrivateKey(derBytes)
@@ -152,9 +150,9 @@ func TestParsePKIXPrivateKeySuccess(t *testing.T) {
 
 func TestBuildAltPublicKeyInfoExtensionsSuccess(t *testing.T) {
 	// Make up some nice key material
-	pk, _, err := KeyPair()
+	pk, _, err := KeyPair("DEFAULT")
 	require.NoError(t, err)
-	_, sk, err := KeyPair()
+	_, sk, err := KeyPair("DEFAULT")
 	require.NoError(t, err)
 	ms := mockSigner{sk: sk}
 	ck, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -174,9 +172,9 @@ func TestBuildAltPublicKeyInfoExtensionsSuccess(t *testing.T) {
 
 func TestBuildAltPublicKeyInfoExtensionsError(t *testing.T) {
 	// Make up some nice key material
-	pk, _, err := KeyPair()
+	pk, _, err := KeyPair("DEFAULT")
 	require.NoError(t, err)
-	_, sk, err := KeyPair()
+	_, sk, err := KeyPair("DEFAULT")
 	ms := mockSigner{sk: sk}
 	require.NoError(t, err)
 
@@ -196,17 +194,15 @@ func TestBuildAltPublicKeyInfoExtensionsError(t *testing.T) {
 }
 
 func TestParseSubjectAltPublicKeyInfoExtension(t *testing.T) {
-	for sigAlg, _ := range(oidMap) {
+	l, err := GetLib()
+	require.NoError(t, err)
+	for _, sigAlg := range(l.EnabledSigs()) {
 		t.Run(string(sigAlg), func(t *testing.T) {
-			// re-initialize Sig with new algorithm
-			DestroySig()
-			err := InitSig(sigAlg)
-			require.NoError(t, err)
 
 			// generate some nice key material
-			pk1, _, err := KeyPair()
+			pk1, _, err := KeyPair(sigAlg)
 			require.NoError(t, err)
-			pk2, sk2, err := KeyPair()
+			pk2, sk2, err := KeyPair(sigAlg)
 			require.NoError(t, err)
 			ms := mockSigner{sk: sk2}
 			ck, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -251,9 +247,9 @@ func TestParseSubjectAltPublicKeyInfoExtension(t *testing.T) {
 
 func TestParseSubjectAltPublicKeyInfoExtensionError(t *testing.T) {
 	// generate some nice key material
-	pk, _, err := KeyPair()
+	pk, _, err := KeyPair("DEFAULT")
 	require.NoError(t, err)
-	_, sk, err := KeyPair()
+	_, sk, err := KeyPair("DEFAULT")
 	require.NoError(t, err)
 	ms := mockSigner{sk: sk}
 	ck, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

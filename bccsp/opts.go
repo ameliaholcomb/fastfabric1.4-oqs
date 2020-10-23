@@ -179,11 +179,12 @@ func (opts *ECDSAReRandKeyOpts) ExpansionValue() []byte {
 // OQSKeyGenOpts contains options for OQS key generation
 type OQSKeyGenOpts struct {
 	Temporary bool
+	SignatureScheme string
 }
 
 // Algorithm returns the key generation algorithm identifier.
 func (opts *OQSKeyGenOpts) Algorithm() string {
-	return QS
+	return opts.SignatureScheme
 }
 
 // Ephemeral returns true if the key to generate has to be ephemeral,

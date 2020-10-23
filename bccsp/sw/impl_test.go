@@ -1958,13 +1958,17 @@ func TestKeyImportFromX509ECDSAHybridOQSPublicKey(t *testing.T) {
 	provider, _, cleanup := currentTestConfig.Provider(t)
 	defer cleanup()
 
-	// Generate an ECDSA key
+	// Generate an ECDSA key and signer
 	k, err := provider.KeyGen(&bccsp.ECDSAKeyGenOpts{Temporary: false})
 	require.NoError(t, err)
+	classicalSigner, err := signer.New(provider, k, nil)
+	require.NoError(t, err)
 
-	// Generate an OQS key and save it in the keystore
+	// Generate an OQS key and signer
 	qK, err := provider.KeyGen(&bccsp.OQSKeyGenOpts{Temporary: false})
 	require.NoError(t, err)
+	qSigner, err := signer.New(provider, qK, nil)
+
 	// Cheat to get access to the underlying raw key,
 	// because we need it to create the X509 certificate extension
 	pubqK, err := qK.PublicKey()
@@ -1973,9 +1977,17 @@ func TestKeyImportFromX509ECDSAHybridOQSPublicKey(t *testing.T) {
 	require.NoError(t, err)
 	rawqK, err := oqs.ParsePKIXPublicKey(bytes)
 	require.NoError(t, err)
-	qkExtensions, err := oqs.BuildAltPublicKeyExtensions(rawqK)
+
+	// Export the public key
+	pk, err := k.PublicKey()
+	require.NoError(t, err)
+	pkRaw, err := pk.Bytes()
+	require.NoError(t, err)
+	pub, err := utils.DERToPublicKey(pkRaw)
 	require.NoError(t, err)
 
+	qkExtensions, err := oqs.BuildAltPublicKeyExtensions(rawqK, pub, qSigner)
+	require.NoError(t, err)
 	// Generate a self-signed certificate
 	testExtKeyUsage := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 	testUnknownExtKeyUsage := []asn1.ObjectIdentifier{[]int{1, 2, 3}, []int{2, 59, 1}}
@@ -2034,19 +2046,6 @@ func TestKeyImportFromX509ECDSAHybridOQSPublicKey(t *testing.T) {
 	}
 	template.ExtraExtensions = append(template.ExtraExtensions, qkExtensions...)
 
-	classicalSigner, err := signer.New(provider, k, nil)
-	require.NoError(t, err)
-
-	// Export the public key
-	pk, err := k.PublicKey()
-	require.NoError(t, err)
-
-	pkRaw, err := pk.Bytes()
-	require.NoError(t, err)
-
-	pub, err := utils.DERToPublicKey(pkRaw)
-	require.NoError(t, err)
-
 	certRaw, err := x509.CreateCertificate(rand.Reader, &template, &template, pub, classicalSigner)
 	require.NoError(t, err)
 
@@ -2063,9 +2062,6 @@ func TestKeyImportFromX509ECDSAHybridOQSPublicKey(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, qPk2)
 
-	// Sign and verify with the imported classical public key
-	// TODO(amelia): We can't really check that a hybrid signer works, because hybrid verification is implemented one
-	// level up, at the msp/signingidentity level. Alas. This will have to be good enough for now.
 	msg := []byte("Hello World")
 
 	digest, err := provider.Hash(msg, &bccsp.SHAOpts{})
@@ -2084,6 +2080,19 @@ func TestKeyImportFromX509ECDSAHybridOQSPublicKey(t *testing.T) {
 	}
 	if !valid {
 		t.Fatal("Failed verifying ECDSA signature. Signature not valid.")
+	}
+
+	signature, err = provider.Sign(qK, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed generating OQS signature [%s]", err)
+	}
+
+	valid, err = provider.Verify(qPk2, signature, digest, nil)
+	if err != nil {
+		t.Fatalf("Failed verifying OQS signature [%s]", err)
+	}
+	if !valid {
+		t.Fatal("Failed verifying OQS signature. Signature not valid.")
 	}
 
 }

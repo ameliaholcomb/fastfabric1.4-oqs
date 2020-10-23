@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/factory"
+	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/tools/cryptogen/ca"
 	"github.com/hyperledger/fabric/common/tools/cryptogen/csp"
 	oqs "github.com/hyperledger/fabric/external_crypto"
@@ -19,6 +20,8 @@ import (
 	"os"
 	"path/filepath"
 )
+
+var logger = flogging.MustGetLogger("cryptogen.msp.generator")
 
 const (
 	CLIENT = iota
@@ -42,7 +45,7 @@ var nodeOUMap = map[int]string{
 }
 
 func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
-	tlsCA *ca.CA, nodeType int, nodeOUs bool) error {
+	tlsCA *ca.CA, nodeType int, nodeOUs bool, genOQSAlg *string) error {
 
 	// create folder structure
 	mspDir := filepath.Join(baseDir, "msp")
@@ -79,16 +82,18 @@ func GenerateLocalMSP(baseDir, name string, sans []string, signCA *ca.CA,
 	// Only generate hybrid quantum-safe identities for peers and orderers.
 	// The fabric client does not currently support anything but ECDSA.
 	var qPubKey *oqs.PublicKey = nil
-	nodeName := nodeOUMap[nodeType]
-	if nodeName == PEEROU || nodeName == ORDEREROU {
-		// generate quantum-safe private key, which saves both public and private key in the Keystore
-		qPrivKey, _, err := csp.GeneratePrivateKey(keystore, &bccsp.OQSKeyGenOpts{Temporary: false})
-		if err != nil {
-			return err
-		}
-		qPubKey, err = csp.GetQSPublicKey(qPrivKey)
-		if err != nil {
-			return err
+	if genOQSAlg != nil && *genOQSAlg != "" {
+		nodeName := nodeOUMap[nodeType]
+		if nodeName == PEEROU || nodeName == ORDEREROU {
+			// generate quantum-safe private key, which saves both public and private key in the Keystore
+			qPrivKey, _, err := csp.GeneratePrivateKey(keystore, &bccsp.OQSKeyGenOpts{Temporary: false, SignatureScheme: *genOQSAlg})
+			if err != nil {
+				return err
+			}
+			qPubKey, err = csp.GetQSPublicKey(qPrivKey)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

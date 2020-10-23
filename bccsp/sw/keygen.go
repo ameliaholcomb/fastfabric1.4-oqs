@@ -42,8 +42,14 @@ func (kg *ecdsaKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
 type oqsKeyGenerator struct {}
 
 func (kg *oqsKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
+
+	alg := opts.Algorithm()
+	if alg == "" {
+		alg = "DEFAULT"
+	}
+	logger.Infof("Generating a quantum-safe key with algorithm [%s]", alg)
 	// The private key has a public key attribute
-	_, privateKey, err := oqs.KeyPair()
+	_, privateKey, err := oqs.KeyPair(oqs.SigType(alg))
 	if err != nil {
 		return nil, err
 	}
