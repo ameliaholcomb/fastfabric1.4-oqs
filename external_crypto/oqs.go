@@ -103,6 +103,9 @@ func KeyPair(algName SigType) (publicKey PublicKey, secretKey SecretKey, err err
 
 func Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
 	s, err := getSig(secretKey.Sig.Algorithm)
+	if err != nil {
+		return nil, err
+	}
 	var signatureLen C.ulong
 
 	sig := C.malloc(C.ulong(s.sig.length_signature))
@@ -126,6 +129,9 @@ func Sign(secretKey SecretKey, message []byte) (signature []byte, err error) {
 
 func Verify(publicKey PublicKey, signature []byte, message []byte) (assert bool, err error) {
 	s, err := getSig(publicKey.Sig.Algorithm)
+	if err != nil {
+		return false, err
+	}
 	mes_len := C.ulong(len(message))
 	msg := C.CBytes(message)
 	defer C.free(msg)

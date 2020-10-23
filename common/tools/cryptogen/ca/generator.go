@@ -78,9 +78,10 @@ func NewCA(baseDir, org, name, country, province, locality, orgUnit, streetAddre
 	template.SubjectKeyId = priv.SKI()
 
 	var qSigner crypto.Signer
+	var qPriv bccsp.Key
 	if genOQSAlg != nil && *genOQSAlg != "" {
 		// Get a public and private post-quantum key
-		qPriv, qSigner, err := csp.GeneratePrivateKey(baseDir, &bccsp.OQSKeyGenOpts{Temporary:false, SignatureScheme: *genOQSAlg})
+		qPriv, qSigner, err = csp.GeneratePrivateKey(baseDir, &bccsp.OQSKeyGenOpts{Temporary:false, SignatureScheme: *genOQSAlg})
 		if err != nil {
 			return nil, err
 		}

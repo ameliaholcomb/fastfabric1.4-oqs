@@ -27,6 +27,7 @@ func TestRoundTrip(t *testing.T) {
 	h12 := strings.ToUpper(hex.EncodeToString(message))
 	fmt.Printf("%s\n", h12)
 
+	require.NotEmpty(t, l.EnabledSigs())
 	for _, sigAlg := range l.EnabledSigs() {
 		t.Run(string(sigAlg), func(t *testing.T) {
 			if string(sigAlg) == "DEFAULT" {
