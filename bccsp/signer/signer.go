@@ -144,6 +144,15 @@ func (s *bccspCryptoSigner) Sign(rand io.Reader, digest []byte, opts crypto.Sign
 			return nil, err
 		}
 		digest = append(digest, qSign...)
+		// Must use SHA384 for post-quantum.
+		hashopt, err := bccsp.GetHashOpt(bccsp.SHA384)
+		if err != nil {
+			return nil, err
+		}
+		digest, err = s.csp.Hash(digest, hashopt)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	cSign, err := s.csp.Sign(s.classicalKey, digest, opts)

@@ -199,6 +199,15 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 		// [digest, quantum_signature]
 		// So we append them here.
 		digest = append(digest, hsu.QuantumSign.RightAlign()...)
+		// Must use SHA384 for post-quantum.
+		hashopt, err := bccsp.GetHashOpt(bccsp.SHA384)
+		if err != nil {
+			return err
+		}
+		digest, err = id.msp.bccsp.Hash(digest, hashopt)
+		if err != nil {
+			return err
+		}
 	}
 	// Note that this call to Verify is expected to fail if:
 	// 1. The received identity is purely classical, but the signature was performed by a hybrid signer
