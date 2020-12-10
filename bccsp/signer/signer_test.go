@@ -92,7 +92,7 @@ func TestInitHybrid(t *testing.T) {
 	assert.NoError(t, err)
 	cKey := &mocks.MockKey{PK: &mocks.MockKey{BytesValue: pkRaw}}
 
-	qK, _, err := oqs.KeyPair()
+	qK, _, err := oqs.KeyPair("DEFAULT")
 	assert.NoError(t, err)
 	qPkRaw, err := oqs.MarshalPKIXPublicKey(&qK)
 	qKey := &mocks.MockKey{PK: &mocks.MockKey{BytesValue: qPkRaw}}

@@ -27,8 +27,8 @@ var mspIdentityLogger = flogging.MustGetLogger("msp.identity")
 
 type hybridSignatureUnpack struct {
 	Raw       asn1.RawContent
-	ClassicalDigest    asn1.BitString
-	QuantumDigest	   asn1.BitString
+	ClassicalSign    asn1.BitString
+	QuantumSign	   asn1.BitString
 }
 
 type identity struct {
@@ -154,6 +154,7 @@ func NewSerializedIdentity(mspID string, certPEM []byte) ([]byte, error) {
 // Verify checks against a signature and a message
 // to determine whether this identity produced the
 // signature; it returns nil if so or an error otherwise
+// TODO: Refactor into separate Verifier class, like existing BCCSP Signer?
 func (id *identity) Verify(msg []byte, sig []byte) error {
 	mspIdentityLogger.Debug("Verifying signature")
 
@@ -174,29 +175,41 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 	}
 
 	if id.qPk != nil {
+		// If the identity has a quantum public key, we expect to see a hybrid signature and will
+		// verify according to the strong-nested hybrid signature scheme described in
+		// https://eprint.iacr.org/2017/460.pdf
 		mspIdentityLogger.Debug("Verifying with quantum-safe public key.")
-		// TODO(amelia): This is a bit ugly. We might consider a verifier, like signer, to handle it better.
-		// If there is a quantum public key, then we interpret the sig bytes as a hybrid signature
 		var hsu hybridSignatureUnpack
 		if rest, err := asn1.Unmarshal(sig, &hsu); err != nil {
 			return err
 		} else if len(rest) != 0 {
 			return errors.New("invalid signature format for quantum signature")
 		}
-		valid, err := id.msp.bccsp.Verify(id.qPk, hsu.QuantumDigest.RightAlign(), digest, nil)
+		valid, err := id.msp.bccsp.Verify(id.qPk, hsu.QuantumSign.RightAlign(), digest, nil)
 		if err != nil {
 			return errors.WithMessage(err, "could not determine the validity of the quantum signature")
 		} else if !valid {
 			return errors.New("The quantum signature is invalid")
 		}
-		// If the quantum part of the signature is valid, continue to check the classical part
-		sig = hsu.ClassicalDigest.RightAlign()
+
+		// If the quantum part of the signature is valid,
+		// continue to check the classical signature.
+		sig = hsu.ClassicalSign.RightAlign()
+		// The classical part of the hybrid signer will have signed
+		// [digest, quantum_signature]
+		// So we append them here.
+		digest = append(digest, hsu.QuantumSign.RightAlign()...)
 	}
+	// Note that this call to Verify is expected to fail if:
+	// 1. The received identity is purely classical, but the signature was performed by a hybrid signer
+	// 2. The received identity is purely classical, but the signature does not match for some other reason
+	// 3. The received identity is hybrid quantum, but the classical part of the signature does not match or
+	//    was not nested/formatted properly.
 	valid, err := id.msp.bccsp.Verify(id.pk, sig, digest, nil)
 	if err != nil {
 		return errors.WithMessage(err, "could not determine the validity of the signature")
 	} else if !valid {
-		return errors.New("The signature is invalid")
+		return errors.New("The classical signature is invalid")
 	}
 
 	return nil

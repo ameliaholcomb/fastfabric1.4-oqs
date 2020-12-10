@@ -44,10 +44,9 @@ type bccspCryptoSigner struct {
 	quantumPk interface{}
 }
 
-// TODO(amelia): Is this a reasonable structure?
 type hybridSignature struct{
-	ClassicalDigest    asn1.BitString
-	QuantumDigest	   asn1.BitString
+	ClassicalSign    asn1.BitString
+	QuantumSign	   asn1.BitString
 }
 
 // New returns a new BCCSP-based crypto.Signer
@@ -130,29 +129,45 @@ func (s *bccspCryptoSigner) Public() crypto.PublicKey {
 // the caller is responsible for hashing the larger message and passing
 // the hash (as digest) and the hash function (as opts) to Sign.
 func (s *bccspCryptoSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	cDigest, err := s.csp.Sign(s.classicalKey, digest, opts)
-	if err != nil {
-		return nil, err
-	}
+
+	// If there is a quantum key associated with the signer,
+	// Follow the strong-nested hybrid signature proposed in
+	// https://eprint.iacr.org/2017/460.pdf
+	// Note that if there is no quantum key, this function returns
+	// an unmodified classical signature.
+	var qSign []byte
+	var err error
 	if s.quantumKey != nil {
 		logger.Debug("Preparing to sign with quantum-safe key")
-		qDigest, err := s.csp.Sign(s.quantumKey, digest, opts)
+		qSign, err = s.csp.Sign(s.quantumKey, digest, opts)
 		if err != nil {
 			return nil, err
 		}
+		digest = append(digest, qSign...)
+	}
+
+	cSign, err := s.csp.Sign(s.classicalKey, digest, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.quantumKey != nil {
 		signature := hybridSignature{
-			ClassicalDigest: asn1.BitString{
-				Bytes:     cDigest,
-				BitLength: 8 * len(cDigest),
+			ClassicalSign: asn1.BitString{
+				Bytes:     cSign,
+				BitLength: 8 * len(cSign),
 			},
-			QuantumDigest: asn1.BitString{
-				Bytes:     qDigest,
-				BitLength: 8 * len(qDigest),
+			QuantumSign: asn1.BitString{
+				Bytes:     qSign,
+				BitLength: 8 * len(qSign),
 			},
 		}
-		ret, _ := asn1.Marshal(signature)
+		ret, err := asn1.Marshal(signature)
+		if err != nil {
+			return nil, err
+		}
 		return ret, nil
 	} else {
-		return cDigest, err
+		return cSign, nil
 	}
 }
